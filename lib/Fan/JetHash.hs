@@ -267,4 +267,5 @@ jetHashes
     , e "_LoadSeed"           "6RP3fUjib3jxhTS3eqokt6JxEnY2ZhaYVV9qJGc8Hp9q"
     , e "_SaveSeed"           "GQyNehswShDk2QxjUmuEgtxkubdfK5qb1T24wayML6Ya"
     , e "_Blake3"             "9U2ZYURVcjs5tReUE7doyFVKLt1t53EMciGsDTK5Dn9y"
+    , e "_PinHash"            "7NrUYCKsoL5UjfdR1WRmHhkMWvjNWm6nvai853he9ipP"
     ]

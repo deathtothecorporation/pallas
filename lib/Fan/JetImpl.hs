@@ -20,6 +20,7 @@ import Fan.Convert
 import Fan.Seed
 import Fan.Eval
 import Fan.Jets
+import Fan.Hash (fanHash)
 import Foreign.ForeignPtr
 import Foreign.Storable
 import PlunderPrelude
@@ -29,6 +30,7 @@ import Fan.FFI                 hiding (c_revmemcmp)
 import Foreign.Marshal.Alloc   (allocaBytes)
 import Foreign.Ptr             (castPtr)
 import GHC.Exts                (Word(..), int2Word#, uncheckedIShiftL#, (+#))
+import Hash256                 (hashToByteString)
 import Loot.Backend            (loadClosure)
 import Loot.ReplExe            (closureRex)
 import Rex                     (GRex(..), RuneShape(..))
@@ -241,6 +243,7 @@ jetImpls = mapFromList
   , ( "_TryExp"                         , Nothing                             )
   , ( "_Try"                            , Just tryJet                         )
   , ( "_Blake3"                         , Just blake3Jet                      )
+  , ( "_PinHash"                        , Just fanHashJet                     )
   , ( "_LoadGerm"                       , Just loadGermJet                    )
   , ( "_SaveGerm"                       , Just saveGermJet                    )
   , ( "_LoadSeed"                       , Just loadSeedJet                    )
@@ -915,6 +918,9 @@ blake3Jet _ e = unsafePerformIO do
     allocaBytes 32 $ \outbuf -> do
         c_jet_blake3_hasher_finalize h (castPtr outbuf)
         BAR <$> BS.packCStringLen (outbuf, 32)
+
+fanHashJet :: Jet
+fanHashJet _ e = BAR . hashToByteString . fanHash $ (e.!1)
 
 tryJet :: Jet
 tryJet f e =

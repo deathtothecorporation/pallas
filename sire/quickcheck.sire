@@ -195,11 +195,15 @@ getSize=(sized pureGen)
 > Gen Word64
 (genU64 r n)=(fst | nextWord64 r)
 
-> Gen Word8
 > Word64 > Word64 > Gen Word64
 = (chooseW64 lo hi r n)
 @ val (fst (nextWord64 r))
 | add lo (mod val (sub hi lo))
+
+> Row (Gen a) > Gen a
+= (oneof gs)
+| bindGen | chooseW64 0 (dec len-gs)
+| get gs
 
 > Gen a > Gen b > Gen (a, b)
 = (gen2 genA genB)
@@ -230,6 +234,26 @@ getSize=(sized pureGen)
 (genMap f gen r n)=(f | gen r n)
 
 genU8=(genMap w8 genU64)
+
+= (genPlan r n)
+^ _ r n
+| oneof
+++ genMap PIN genPlan
+++ : n < bindGen genU64
+   : a < bindGen | genMap inc genU64
+   : b < bindGen genPlan
+   | pureGen | LAW n a b
+++ : a < bindGen genPlan
+   | if (lte arity-a 1) | pureGen a
+   : b < bindGen genPlan
+   | pureGen (a b)
+++ genU64
+++ genList genU64
+++ oneof [c0 c1 c2 c3 c4 c5 c6 c7 c8 c9]
+++ genMap listToRow (genListLenMax 5 genPlan)
+++ genMap (compose setFromRow listToRow) (genListLenMax 5 genPlan)
+++ genMap tabFromPairsList (genListLenMax 5 | gen2 genU64 genPlan)
+; ++ genMap natBar genU8 ; TODO why does this perform so poorly?
 
 
 ;;; shrinkers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -281,6 +305,15 @@ genU8=(genMap w8 genU64)
     | listTakeWhile (v&(gth v 0))
     | listIterate (v&(div v 2)) n
 | shrinkOne xs
+
+; TODO shrink tabs, sets, rows, cows and bars separately
+> Any > List Any
+= (shrinkPlan plan)
+| if isPin-plan | ~[pinItem-plan]
+| if isLaw-plan | ~[lawName-plan lawArgs-plan lawBody-plan]
+| if isApp-plan | ~[car-plan cdr-plan]
+| if isNat-plan | shrinkNat plan
+| else          | die {shrinkPlan impossible case}
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -349,6 +382,8 @@ genU8=(genMap w8 genU64)
 = arbU64     | (genU64, shrinkNat)
 = arbU64List | (genList genU64, shrinkList shrinkNat)
 
+= arbPlan    | (genPlan, shrinkPlan)
+
 = (isList x)
 ^ (isZero x || _)
 | (isRow x && (len x == 2) && isList (snd x))
@@ -384,4 +419,4 @@ genU8=(genMap w8 genU64)
 ^-^
 ^-^ arbU8 arbU8List
 ^-^ arbU64 arbU64List
-^-^
+^-^ arbPlan

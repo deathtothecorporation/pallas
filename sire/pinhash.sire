@@ -1,0 +1,58 @@
+#### pinhash <- quickcheck
+
+:| sire
+:| blake3
+:| quickcheck
+
+> Nat > Nat > Bar
+= (wordSing sz) | natToSizedBar (mul sz 8)
+
+> Nat > (Bar, Bar)
+= (doNat n)
+| if isZero-n | wordSing 1 0
+@ sz | inc | div (dec met-n) 64 ; what happens if something is bigger than 8 bytes?
+| (wordSing 1 sz, wordSing sz n)
+
+> Any > Bar
+= (_PinHash plan)
+^ blake3 (_ plan)
+? (go a)
+| if isTab-a :: x#08
+             :: (wordSing 1 tabLen-a)
+             :: (listMap go tabKeysList-a)
+             :: (listMap go tabValsList-a)
+| if isSet-a | (x#07 :: wordSing 1 setLen-a :: map go setToRow-a)
+| if isRow-a | (x#06 :: wordSing 1 len-a :: map go a)
+| if isCow-a | (x#05 :: doNat cowSize-a)
+| if isBar-a | (x#04 :: wordSing 1 barLen-a :: a)
+| if isNat-a | (x#03 :: doNat a)
+| if isApp-a ^ (x#02 :: _ 0 ~[] a)
+             ? (loop n as a)
+             | ifNot isApp-a (wordSing 1 n :: go a :: listMap go as)
+             | loop
+             * inc n
+             * (cdr-a :: as)
+             * car a
+| if isLaw-a | (x#01 :: doNat lawName-a :: doNat lawArgs-a :: go lawBody-a)
+| if isPin-a | (x#00 :: _PinHash pinItem-a)
+| else       | die {impossible case in _PinHash}
+
+pinHash=_PinHash
+
+= (prop_jet_equals x)
+| eql | pinHash x
+| pinItem pinHash x
+
+!! prop_jet_equals [1=3 5=2 7=8]
+!! prop_jet_equals %[4 6 1 0 10]
+!! prop_jet_equals [1 2 3 4 5 6]
+!! prop_jet_equals c4
+!! prop_jet_equals x#deadbeef
+!! prop_jet_equals 42
+!! prop_jet_equals (0 42)
+!! prop_jet_equals pinItem-add
+!! prop_jet_equals PIN-42
+
+!! qc1_pass 42 {correct _PinHash jet} prop1-prop_jet_equals arbPlan
+
+; ^-^ pinHash
