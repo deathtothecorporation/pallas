@@ -3,8 +3,9 @@
 set -ex
 
 tmp=$(mktemp -u .demo-XXXXXXX)
+plunder=$(stack path --local-install-root)/bin/plunder
 
 cleanup () { rm -rf "./$tmp"; }
 trap cleanup EXIT
 
-plunder boot "./$tmp" sire/demo_http_client.sire --start
+$plunder boot "./$tmp" sire/demo_http_client.sire --start
