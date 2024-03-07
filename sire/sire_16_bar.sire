@@ -190,14 +190,16 @@ emptyBar=(0 1 1 1)
 (_BarSliceToNat off wid bar)=(barNat | barSlice off wid bar)
 
 = (barCountHeadMatching match b)
+@ n | barLen b
 ^ _ 0
 ? (loop i)
 | seq i
-| ifNot (match (barIdx i b)) i
+| if (eql i n) | NONE
+| ifNot (match (barIdx i b)) | SOME i
 | loop (inc i)
 
-(barDropWhile f b)=(barDrop (barCountHeadMatching f b) b)
-(barTakeWhile f b)=(barTake (barCountHeadMatching f b) b)
+(barDropWhile f b)=(barDrop (fromSome 0        | barCountHeadMatching f b) b)
+(barTakeWhile f b)=(barTake (fromSome barLen-b | barCountHeadMatching f b) b)
 
 = (barToList b)       | listGen (barLen b) (barGet b)
 = (barFoldl f z b)    | listFoldl f z (barToList b)
