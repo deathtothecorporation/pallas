@@ -128,7 +128,6 @@ import qualified Data.Vector                    as V
 import qualified Network.HTTP.Client            as Client
 import qualified Network.HTTP.Client.TLS        as Client
 import qualified Network.HTTP.Types             as W
-import qualified Network.Socket                 as N
 import qualified Network.Wai                    as W
 import qualified Network.Wai.Handler.Warp       as W
 import qualified Network.Wai.Handler.WebSockets as W
@@ -251,8 +250,7 @@ instance FromNoun File where
 {-|
 -}
 data CogState = COG_STATE
-    { sock :: N.Socket -- ^ HTTP Socket
-    , port :: Int      -- ^ HTTP Port
+    { port :: Int      -- ^ HTTP Port
     , file :: FilePath -- ^ File containing the HTTP Port
 
     , serverThread :: Async ()
@@ -320,14 +318,7 @@ stopCogById st cogId = do
 spinCog :: Debug => HWState -> CogId -> IO ()
 spinCog st cogId = do
     traceM "HTTP_SPINNING"
-    let localhost = N.tupleToHostAddress (0x7f, 0, 0, 1)
-    let flags = [N.AI_NUMERICHOST, N.AI_NUMERICSERV]
-    let tcp   = 6
-    let addr  = (N.SockAddrInet 0 localhost)
-    let ainfo = N.AddrInfo flags N.AF_INET N.Stream tcp addr Nothing
-    listenSocket <- N.openSocket ainfo
-    N.listen listenSocket 5 -- TODO Should this be 5?
-    listenPort <- fromIntegral <$> N.socketPort listenSocket
+    let listenPort = 8080
     debugVal ("_http_port")
              (fromIntegral listenPort :: Nat)
 
@@ -341,7 +332,6 @@ spinCog st cogId = do
         hold <- newTVarIO emptyPool
         hear <- newTVarIO emptyPool
         lock <- newMVar ()
-        sock <- pure listenSocket
         port <- pure listenPort
         live <- newTVarIO emptyPool
         liveClientReqs    <- newTVarIO emptyPool
@@ -350,7 +340,7 @@ spinCog st cogId = do
             serverThread <- async (servThread st.store (st.wsApp cogId) cs)
             clientThread <- async (clientWorker st.manager cs)
             let file = portFile
-            let ~cs  = COG_STATE{sock,port,file,serverThread,serv,hear,lock,
+            let ~cs  = COG_STATE{port,file,serverThread,serv,hear,lock,
                                  hold,live,liveClientReqs,pendingClientReqs,
                                  clientThread}
             pure cs
@@ -384,7 +374,7 @@ vHTTPNamePool = unsafePerformIO $ (mkThreadNamePool "HTTP" >>= newIORef)
 servThread :: Debug => LmdbStore -> WS.ServerApp -> CogState -> IO ()
 servThread lmdbStore wsApp cog = do
     let prefs = W.defaultSettings & W.setPort (fromIntegral cog.port)
-    W.runSettingsSocket prefs cog.sock
+    W.runSettings prefs
         $ W.websocketsOr WS.defaultConnectionOptions wsApp
         $ \req k -> do
             -- Manually set the process name since we're a few layers deep
