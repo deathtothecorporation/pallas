@@ -1,0 +1,83 @@
+; Copyright 2023 Jack Ek
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+
+; Usage:
+; 1. Boot and start this file.
+; 2. Note down the HTTP port number.
+; 3. Edit the port number in demo_recv_law
+; 4. Boot and start demo_recv_law
+
+#### demo_send_law <- quickcheck
+
+:| prelude
+:| kern
+:| quickcheck
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+= (jam plan)
+| _SaveSeed
+| if isPin-plan [%pin (_SaveGerm plan)]
+| [%not (_SaveGerm PIN-plan)]
+
+= (cue nat)
+@ [tag (pins,nat)] | _LoadSeed nat
+| if (tag == %pin) | SOME | _LoadGerm pins nat
+| if (tag == %not) | SOME | pinItem | _LoadGerm pins nat
+| NONE
+
+!! ^ qc1_pass 42 {jam cue inverse} (prop1 _) arbPlan
+   a&(SOME a == cue jam-a)
+
+= (pubCog laws return)
+: req@[rid method path headers PIN|msg] < syscall HTTP_HEAR
+@ (fail msg)
+  | trk msg
+  : _ < syscall | HTTP_ECHO rid 400 b#bad [] b#{}
+  | pubCog laws return
+# switch method
+* _ | fail %badMethod
+* POST
+  # switch path
+  * _ | fail %badPath
+  * b#{/agora}
+    @ law | tabGet laws msg
+    : _ < syscall | HTTP_ECHO rid 200 b#ok [] jam-law
+    | pubCog laws return
+
+; = (pubCog laws)
+; @ laws | lawBook laws
+; ? (go return)
+; : _ < syscall (COG_TELL %agora (_ hash)&[(tabGet laws hash)])
+; | go return
+
+= (law1 a)
+| traceId [law1=a]
+
+= (law2 a)
+| trk [law2=a]
+| add a 10
+
+= (law3 a)
+| trk [law3=a]
+| mul a 10
+
+= (law4 a)
+| trk [law4=a]
+| mul a | add a 7
+
+= lawBook
+| tabFromPairs
+: law < foreach [law1 law2 law3 law4]
+[planHash-law law]
+
+= lawHashes | tabKeysRow lawBook
+
+= main
+: exit < runCog
+: srv < fork (| syscall | HTTP_SERV | const NONE)
+| pubCog lawBook exit
+
+^-^ main jam cue
+^-^ lawHashes

@@ -1,0 +1,55 @@
+; Copyright 2023 Jack Ek
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+
+#### demo_recv_law <- demo_send_law
+
+:| prelude
+:| kern
+:| quickcheck
+:| demo_send_law [jam cue lawHashes]
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+pubCogPort=35601 ;; EDIT ME!
+
+= (askerCog name onExit tid pubCogId return)
+@ req | HTTP_REQ b#POST (barWeld pubCogId b#{/agora}) [] name 1 1000000
+: resp@[code msg headers PIN|body] < syscall req
+# datacase (cue body)
+* NONE
+  : () < onExit | traceId (%crash, tid, NONE)
+  | return ()
+* SOME|law
+  : _ < onExit (%ok, tid, law-tid)
+  | return ()
+
+; = (askerCog name onExit tid pubCogId return)
+; : ??(asker_told mybLaw) < syscall (COG_ASK pubCogId %agora name)
+; # datacase mybLaw
+; * NONE
+;   : () < onExit | traceId (%crash, tid, NONE)
+;   | return ()
+; * SOME-law
+;   : _ < onExit (%ok, tid, law-tid)
+;   | return ()
+
+= (askDemo return)
+@ pubCogId | barWeld b#{http://localhost:} | natBar | showNat pubCogPort
+: a < newEmptyMVar
+: b < newEmptyMVar
+: c < newEmptyMVar
+: d < newEmptyMVar
+: _ < fork (askerCog (idx 0 lawHashes) (putMVar a) 1 pubCogId)
+: _ < fork (askerCog (idx 1 lawHashes) (putMVar b) 2 pubCogId)
+: _ < fork (askerCog (idx 2 lawHashes) (putMVar c) 3 pubCogId)
+: _ < fork (askerCog (idx 3 lawHashes) (putMVar d) 4 pubCogId)
+: ar@(aOk, _, aRes) < takeMVar a
+: br@(bOk, _, bRes) < takeMVar b
+: cr@(cOk, _, cRes) < takeMVar c
+: dr@(dOk, _, dRes) < takeMVar d
+;
+| trk [{RESULTS} aRes bRes cRes dRes]
+| return ()
+
+main=(runCog askDemo)
