@@ -1,4 +1,4 @@
-; Copyright 2023 Jack Ek
+; Copyright 2024 Jack Ek
 ; Use of this source code is governed by a BSD-style license that can be
 ; found in the LICENSE file.
 
@@ -6,33 +6,23 @@
 
 :| prelude
 :| kern
-:| quickcheck
-:| demo_send_law [jam cue lawHashes]
+:| net_machine
+:| demo_send_law [lawHashes]
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-pubCogPort=35601 ;; EDIT ME!
+pubCogPort=50851 ;; EDIT ME!
 
 = (askerCog name onExit tid pubCogId return)
-@ req | HTTP_REQ b#POST (barWeld pubCogId b#{/agora}) [] name 1 1000000
-: resp@[code msg headers PIN|body] < syscall req
-# datacase (cue body)
+@ req | NET_ASK pubCogId %agora name
+: mybLaw < syscall req
+# datacase mybLaw
 * NONE
   : () < onExit | traceId (%crash, tid, NONE)
   | return ()
 * SOME|law
   : _ < onExit (%ok, tid, law-tid)
   | return ()
-
-; = (askerCog name onExit tid pubCogId return)
-; : ??(asker_told mybLaw) < syscall (COG_ASK pubCogId %agora name)
-; # datacase mybLaw
-; * NONE
-;   : () < onExit | traceId (%crash, tid, NONE)
-;   | return ()
-; * SOME-law
-;   : _ < onExit (%ok, tid, law-tid)
-;   | return ()
 
 = (askDemo return)
 @ pubCogId | barWeld b#{http://localhost:} | natBar | showNat pubCogPort

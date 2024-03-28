@@ -1,0 +1,70 @@
+; Copyright 2024 Jack Ek
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+
+; This implements a fake IO device called %net, which allows two cogs on
+; different machines to talk to each other in much the same way as they
+; would when using %cog on one machine.
+;
+; For this to work, you need to use the `syscall` function that this
+; file exports instead of the standard one. It intercepts calls to
+; %net and turns them into appropriate syscalls to %http.
+
+#### net_machine <- quickcheck
+
+:| prelude
+:| kern
+:| quickcheck
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+= (jam plan)
+| _SaveSeed
+| if isPin-plan [%pin (_SaveGerm plan)]
+| [%not (_SaveGerm PIN-plan)]
+
+= (cue nat)
+@ [tag (pins,nat)] | _LoadSeed nat
+# switch tag
+* _   | NONE
+* pin | SOME | _LoadGerm pins nat
+* not | SOME | pinItem | _LoadGerm pins nat
+
+!! ^ qc1_pass 42 {jam cue inverse} (prop1 _) arbPlan
+   a&(SOME a == cue jam-a)
+
+= (NET_ASK url channel msg) [%net 0 %ask url channel msg]
+= (NET_TELL channel f)      [%net 0 %tell channel f]
+
+= (toHttpReq [machine _ cmd url channel msg])
+| ifNot ((machine == %net) && (cmd == %ask)) | die %not_net_ask
+| HTTP_REQ b#POST barCat-[url b#{/} (natBar channel)] [] msg 1 1000000
+
+= (sysCall req k)
+@ default | syscall req k
+# switch fst-req
+* _ default
+* net
+  # switch thr-req
+  * _ default
+  * ask
+    : [_ _ _ PIN|msg] < syscall | toHttpReq req
+    | k cue-msg
+  * tell
+    @ [_ _ _ channel f] req
+    : [rid method path _ PIN|msg] < syscall HTTP_HEAR
+    @ (fail msg)
+      | trk msg
+      : _ < syscall | HTTP_ECHO rid 400 b#bad [] b#{}
+      | k ()
+    # switch method
+    * _ | fail %badMethod
+    * POST
+      | ifNot (barDrop 1 path == natBar channel) | fail %badPath
+      : _ < syscall | HTTP_ECHO rid 200 b#ok [] (jam f-msg)
+      | k ()
+
+syscall=sysCall
+
+^-^ syscall
+^-^ NET_ASK NET_TELL

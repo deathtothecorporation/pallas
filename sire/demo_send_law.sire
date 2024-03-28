@@ -5,52 +5,20 @@
 ; Usage:
 ; 1. Boot and start this file.
 ; 2. Note down the HTTP port number.
-; 3. Edit the port number in demo_recv_law
-; 4. Boot and start demo_recv_law
+; 3. Edit the port number in demo_recv_law.
+; 4. Boot and start demo_recv_law on the same machine.
 
-#### demo_send_law <- quickcheck
+#### demo_send_law <- net_machine
 
 :| prelude
 :| kern
-:| quickcheck
+:| net_machine
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-= (jam plan)
-| _SaveSeed
-| if isPin-plan [%pin (_SaveGerm plan)]
-| [%not (_SaveGerm PIN-plan)]
-
-= (cue nat)
-@ [tag (pins,nat)] | _LoadSeed nat
-| if (tag == %pin) | SOME | _LoadGerm pins nat
-| if (tag == %not) | SOME | pinItem | _LoadGerm pins nat
-| NONE
-
-!! ^ qc1_pass 42 {jam cue inverse} (prop1 _) arbPlan
-   a&(SOME a == cue jam-a)
-
 = (pubCog laws return)
-: req@[rid method path headers PIN|msg] < syscall HTTP_HEAR
-@ (fail msg)
-  | trk msg
-  : _ < syscall | HTTP_ECHO rid 400 b#bad [] b#{}
-  | pubCog laws return
-# switch method
-* _ | fail %badMethod
-* POST
-  # switch path
-  * _ | fail %badPath
-  * b#{/agora}
-    @ law | tabGet laws msg
-    : _ < syscall | HTTP_ECHO rid 200 b#ok [] jam-law
-    | pubCog laws return
-
-; = (pubCog laws)
-; @ laws | lawBook laws
-; ? (go return)
-; : _ < syscall (COG_TELL %agora (_ hash)&[(tabGet laws hash)])
-; | go return
+: _ < syscall | NET_TELL %agora (tabGet laws)
+| pubCog laws return
 
 = (law1 a)
 | traceId [law1=a]
@@ -79,5 +47,5 @@
 : srv < fork (| syscall | HTTP_SERV | const NONE)
 | pubCog lawBook exit
 
-^-^ main jam cue
+^-^ main
 ^-^ lawHashes
