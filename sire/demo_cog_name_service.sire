@@ -5,16 +5,20 @@
 ; usage (examples below use httpie, which is like cURL):
 ; - start cog, note port. (examples use 8080)
 ; - $ http :8080
+;   - this is a GET
 ;   - returns "vaporware" (domain name. likely unused for now)
 ; - $ http :8080/vinney
+;   - this is a GET
 ;   - returns empty - vinney isn't registered
 ; - $ http -f :8080/announce name=vinney address=1.1.1.1 pubkey=trustme
+;   - this is a POST
 ;   - returns "ok"
 ;   - note `-f` here. this serializes the body as "form fields" (not json),
 ;     which is what this cog expects
 ; - $ http :8080/vinney
 ;   - returns "1.1.1.1,trustme"
 ; - $ http -f :8080/changeaddress name=vinney address=9.9.9.9 pubkey=trustme
+;   - this is a POST
 ;   - returns "ok"
 ; - $ http :8080/vinney
 ;   - returns "9.9.9.9,trustme"
