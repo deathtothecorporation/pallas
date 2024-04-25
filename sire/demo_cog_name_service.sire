@@ -1,0 +1,256 @@
+; Copyright 2024 Vinney Cavallo
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+
+#### demo_cog_name_service <- net_machine
+
+:| prelude
+:| kern
+:| net_machine
+:| hitch
+:| json
+:| gen
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+nsHost={http://localhost:}
+nsDomain={vaporware} ;; EDIT ME!
+nsPort=50851 ;; EDIT ME!
+
+> HMap Str (Bar, Bar)
+= startingRegisteredNames
+| tabFromPairs [[b#{jack} [b#{1.1.1.1} b#{abc123}]]]
+
+# record CogState
+| COG_STATE
+* registeredNames : (HMap Name (Address, Pubkey))
+* servThread       : ThreadId
+
+> ThreadId > CogState
+= (newState servThread)
+| COG_STATE
+* startingRegisteredNames
+* servThread
+
+(emptyFileServer req)=NONE
+
+= (fileServer (PIN st) [method path headers (PIN body)])
+| trk [%youveHitFileServer path]
+# switch method
+* _ | NONE
+;* GET
+;  @ head | [(b#{Content-Type}, b#{})]
+;  [200 b#gotcha head b#{}]
+
+; `modifyState` modifies the vSt ref and reboots the static server
+; in-place (keeping the same ThreadId).
+> Ref CogState
+> (CogState > CogState)
+> Cog ()
+= (modifyState vSt fun return)
+: (PIN old) < readRef vSt
+@ srv       | **getServThread old
+@ pNew      | PIN (fun old)
+: _         < writeRef vSt pNew
+: _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
+| return ()
+
+;;;; Http helpers
+
+= baseHeaders
+++ (b#{Content-Type}, b#{text/html; charset=utf-8})
+++ (b#{Server}, b#{Pallas/0.1})
+++ (b#{Access-Control-Allow-Methods}, b#{PUT, GET, POST, PUT, DELETE, OPTIONS})
+++ (b#{Access-Control-Allow-Headers}, b#{Origin, X-Requested-With, Content-Type, Accept})
+
+= (mergeHeaders oldPairs newPairs)
+@ oldTab    | tabFromPairs oldPairs
+@ newTab    | tabFromPairs newPairs
+| tabToPairs | tabWeld newTab oldTab
+
+; use to overwrite base headers
+= (baseHeaderOverwrite newHeaders)
+| mergeHeaders baseHeaders newHeaders
+
+= (baseResponse rid code msg moreHeaders body)
+[rid code msg moreHeaders body]
+
+; [b#{name=jack} b#{address=123} b#{pubkey=5555}]
+= (barsToPairs char bars)
+| map (barSplitOne char) bars
+
+=?= [[b#{name} b#{jack}] [b#{address} b#{123}]]
+  | (barsToPairs {=} [b#{name=jack} b#{address=123}])
+
+= (paramsToPairs b)
+| listToRow | barSplit {&} b
+
+=?= [b#{name=jack} b#{address=123}]
+  | paramsToPairs b#{name=jack&address=123}
+
+= (paramsToTab b)
+| tabFromPairs | barsToPairs {=} | paramsToPairs b
+
+=?= (tabFromPairs [[b#{name} b#{jack}] [b#{address} b#{123}]])
+  | paramsToTab b#{name=jack&address=123}
+
+;;;;
+
+> Ref CogState > HttpReq > Cog ()
+= (handleReq vSt request return)
+| trk [%inHandleReq]
+@ [rid method path headers pBody@(PIN body)] request
+| trk [%gotRequest]
+# switch method
+* GET
+  | trk [%gotGet path]
+  # switch path
+  * b#{/}
+    ; return domain
+    @ domain | natBar nsDomain
+    @ res | (baseResponse rid 200 b#ok baseHeaders domain)
+    : _ < fork (syscall | rowApply **HTTP_ECHO res)
+    | return ()
+  * _
+  : (PIN st) < readRef vSt
+  @ names (**getRegisteredNames st)
+  ; assmume that we got a /<some-name>
+  ; if <some-name> is registered, respond with the ip
+  ; if not registered, return a fail or empty
+  | trk names
+  @ sought | barDrop 1 path
+  | trk [%sought sought]
+  @ found | tabGet names sought
+  | trk [%found found]
+  | ifNot (eql found 0)
+    @ res | (baseResponse rid 200 b#ok baseHeaders (barCat [(idx 0 found) b#{,} (idx 1 found)]))
+    : _ < fork (syscall | rowApply **HTTP_ECHO res)
+    | return ()
+  @ res | (baseResponse rid 400 b#notfound baseHeaders b#{})
+  : _ < fork (syscall | rowApply **HTTP_ECHO res)
+  | return ()
+* POST
+  | trk [%gotPost]
+  | trk [%path path]
+  | trk [%body body]
+  | trk [%headers headers]
+  # switch path
+  * b#{/announce}
+    ; TODO: check signed message with ed25519
+    ; TODO: fail if name already registered
+    ; fail if invalid signature
+    ; all good, store:
+    ;  - name
+    ;  - address
+    ;  - pubkey
+    ;
+    ; post should be form-style, url-encoded
+    ; like this: b#{name=jack&address=1.2.3.4&pubkey=123asdf}
+    @ paramsTab | paramsToTab body
+    | trk [%paramsTab paramsTab]
+    | trk [%name (tabGet paramsTab b#{name})]
+    | trk [%address (tabGet paramsTab b#{address})]
+    | trk [%pubkey (tabGet paramsTab b#{pubkey})]
+    @ newKey | (tabGet paramsTab b#{name})
+    @ newVal | [(tabGet paramsTab b#{address}) (tabGet paramsTab b#{pubkey})]
+    : (PIN st) < readRef vSt
+    @ oldNames | (getRegisteredNames st)
+    | trk [%oldNames oldNames]
+    @ newNames | (tabIns newKey newVal oldNames)
+    | trk [%newNames newNames]
+    : _ < modifyState vSt & st
+                          | setRegisteredNames newNames
+                          | st
+    @ res | (baseResponse rid 200 b#ok baseHeaders b#{})
+    : _ < fork (syscall | rowApply **HTTP_ECHO res)
+    | return ()
+  * b#{/changeaddress}
+    ; TODO: fail if name is not registered
+    ; TODO: check signed message with ed25519
+    ; fail if invalid signature
+    ; all good, replace address for this name
+    ;
+    : (PIN st) < readRef vSt
+    @ paramsTab | paramsToTab body
+    | trk [%paramsTab paramsTab]
+    | trk [%name (tabGet paramsTab b#{name})]
+    | trk [%address (tabGet paramsTab b#{address})]
+    | trk [%pubkey (tabGet paramsTab b#{pubkey})]
+    @ name | (tabGet paramsTab b#{name})
+    @ oldNames | (getRegisteredNames st)
+    @ oldRecord | (tabGet oldNames name)
+    | trk [%oldRecord oldRecord]
+    @ oldPubKey (idx 1 oldRecord)
+    | trk [%oldPubkey oldPubKey]
+    @ newVal | [(tabGet paramsTab b#{address}) oldPubKey]
+    @ oldNames | (getRegisteredNames st)
+    | trk [%oldNames oldNames]
+    @ newNames | (tabIns name newVal oldNames)
+    | trk [%newNames newNames]
+    : _ < modifyState vSt & st
+                          | setRegisteredNames newNames
+                          | st
+    @ res | (baseResponse rid 200 b#ok baseHeaders b#{})
+    : _ < fork (syscall | rowApply **HTTP_ECHO res)
+    | return ()
+  * _
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad baseHeaders b#{}))
+    | return ()
+* _
+  | trk [%gotUnknown method]
+  : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
+  | return ()
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+> Ref CogState > Cog Void
+= (runHttpServer vSt return)
+: ??(rhs_heard req) < syscall HTTP_HEAR
+: _                 < handleReq vSt req
+| runHttpServer vSt return
+
+> Cog ()
+= (launchDemo return)
+: servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
+: vSt         < newRef (PIN | newState servThread)
+: _           < modifyState vSt id
+: httpThread1 < fork (runHttpServer vSt)
+: httpThread2 < fork (runHttpServer vSt)
+| return ()
+
+> PausedCog
+main=(runCog launchDemo)
+
+
+;
+; = (askerCog name onExit tid pubCogId return)
+; @ req | NET_ASK pubCogId %agora name
+; : mybLaw < syscall req
+; # datacase mybLaw
+; * NONE
+;   : () < onExit | traceId (%crash, tid, NONE)
+;   | return ()
+; * SOME|law
+;   : _ < onExit (%ok, tid, law-tid)
+;   | return ()
+;
+; = (askDemo return)
+; @ pubCogId | barWeld nsHost | natBar | showNat pubCogPort
+; : a < newEmptyMVar
+; : b < newEmptyMVar
+; : c < newEmptyMVar
+; : d < newEmptyMVar
+; : _ < fork (askerCog (idx 0 lawHashes) (putMVar a) 1 pubCogId)
+; : _ < fork (askerCog (idx 1 lawHashes) (putMVar b) 2 pubCogId)
+; : _ < fork (askerCog (idx 2 lawHashes) (putMVar c) 3 pubCogId)
+; : _ < fork (askerCog (idx 3 lawHashes) (putMVar d) 4 pubCogId)
+; : ar@(aOk, _, aRes) < takeMVar a
+; : br@(bOk, _, bRes) < takeMVar b
+; : cr@(cOk, _, cRes) < takeMVar c
+; : dr@(dOk, _, dRes) < takeMVar d
+; ;
+; | trk [{RESULTS} aRes bRes cRes dRes]
+; | return ()
+;
+; main=(runCog askDemo)
