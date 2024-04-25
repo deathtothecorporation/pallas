@@ -1,6 +1,23 @@
 ; Copyright 2024 Vinney Cavallo
 ; Use of this source code is governed by a BSD-style license that can be
 ; found in the LICENSE file.
+;
+; usage (examples below use httpie, which is like cURL):
+; - start cog, note port. (examples use 8080)
+; - $ http :8080
+;   - returns "vaporware" (domain name. likely unused for now)
+; - $ http :8080/vinney
+;   - returns empty - vinney isn't registered
+; - $ http -f :8080/announce name=vinney address=1.1.1.1 pubkey=trustme
+;   - returns "ok"
+;   - note `-f` here. this serializes the body as "form fields" (not json),
+;     which is what this cog expects
+; - $ http :8080/vinney
+;   - returns "1.1.1.1,trustme"
+; - $ http -f :8080/changeaddress name=vinney address=9.9.9.9 pubkey=trustme
+;   - returns "ok"
+; - $ http :8080/vinney
+;   - returns "9.9.9.9,trustme"
 
 #### demo_cog_name_service <- net_machine
 
@@ -19,7 +36,7 @@ nsPort=50851 ;; EDIT ME!
 
 > HMap Str (Bar, Bar)
 = startingRegisteredNames
-| tabFromPairs [[b#{jack} [b#{1.1.1.1} b#{abc123}]]]
+| tabFromPairs []
 
 # record CogState
 | COG_STATE
