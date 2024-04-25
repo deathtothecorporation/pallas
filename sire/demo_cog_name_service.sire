@@ -23,20 +23,18 @@
 ; - $ http :8080/vinney
 ;   - returns "9.9.9.9,trustme"
 
-#### demo_cog_name_service <- net_machine
+#### demo_cog_name_service <- prelude
 
 :| prelude
 :| kern
-:| net_machine
 :| hitch
-:| json
 :| gen
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 nsHost={http://localhost:}
 nsDomain={vaporware} ;; EDIT ME!
-nsPort=50851 ;; EDIT ME!
+; unused for now; nsPort=50851 ;; EDIT ME!
 
 > HMap Str (Bar, Bar)
 = startingRegisteredNames
@@ -242,36 +240,3 @@ nsPort=50851 ;; EDIT ME!
 
 > PausedCog
 main=(runCog launchDemo)
-
-
-;
-; = (askerCog name onExit tid pubCogId return)
-; @ req | NET_ASK pubCogId %agora name
-; : mybLaw < syscall req
-; # datacase mybLaw
-; * NONE
-;   : () < onExit | traceId (%crash, tid, NONE)
-;   | return ()
-; * SOME|law
-;   : _ < onExit (%ok, tid, law-tid)
-;   | return ()
-;
-; = (askDemo return)
-; @ pubCogId | barWeld nsHost | natBar | showNat pubCogPort
-; : a < newEmptyMVar
-; : b < newEmptyMVar
-; : c < newEmptyMVar
-; : d < newEmptyMVar
-; : _ < fork (askerCog (idx 0 lawHashes) (putMVar a) 1 pubCogId)
-; : _ < fork (askerCog (idx 1 lawHashes) (putMVar b) 2 pubCogId)
-; : _ < fork (askerCog (idx 2 lawHashes) (putMVar c) 3 pubCogId)
-; : _ < fork (askerCog (idx 3 lawHashes) (putMVar d) 4 pubCogId)
-; : ar@(aOk, _, aRes) < takeMVar a
-; : br@(bOk, _, bRes) < takeMVar b
-; : cr@(cOk, _, cRes) < takeMVar c
-; : dr@(dOk, _, dRes) < takeMVar d
-; ;
-; | trk [{RESULTS} aRes bRes cRes dRes]
-; | return ()
-;
-; main=(runCog askDemo)
