@@ -1,0 +1,16 @@
+#### countdown_cog <- prelude
+
+:|  prelude
+
+;;;;;
+
+= (countDownFrom count return)
+: ??(syscall_time now) < syscall TIME_WHEN
+| trk [%currentCount count %currentTime now]
+| if (isZero count)
+  | trk ["now we're done"]
+  | return ()
+| countDownFrom (dec count) return
+
+main=(runCog | countDownFrom 5)
+

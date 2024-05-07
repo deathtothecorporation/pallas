@@ -1,0 +1,12 @@
+#### hello_world_cog <- prelude
+
+:|  prelude
+
+;;;;;
+
+= (helloWorld return)
+| trk "hello world"
+| return ()
+
+main=(runCog helloWorld)
+
