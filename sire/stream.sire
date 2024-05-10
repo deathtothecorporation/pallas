@@ -1,0 +1,80 @@
+#### stream <- prelude
+
+:| sire_12_tab [tabLookup]
+:| sire_15_pad
+:| sire_16_bar [barSlice barSplit barLen]
+:| prelude
+
+> Bar > Maybe Nat
+= (parseNat bar)
+@ wid (barLen bar)
+@ hed (barIdx 0 bar)
+| maybeGuardNot (isZero wid)
+| maybeGuard    (isDigit hed)
+@ acc (sub hed {0})
+^ (_ acc 1)
+? (go acc ix)
+| if (gte ix wid) (SOME acc)
+@ c (barGet bar ix)
+| maybeGuard (isDigit c)
+@ !acc (add (mul 10 acc) (sub c {0}))
+| go acc inc-ix
+
+= (parseRangeHeader headers)
+; TODO this needs to be case-insensitive
+@ rangeHeader | tabLookup b#{range} headers
+| trk [%headers headers]
+| trk [%rangeHeader rangeHeader]
+# datacase rangeHeader
+* NONE
+  | NONE
+* (SOME rangeValue)
+  ; we'll get "bytes=nnnn-mmmm"
+  @ parts | barSplit {=} rangeValue
+  @ range | idx 1 parts
+  | trk [%parts parts]
+  | trk [%range range]
+  ; [nnnn     mmmm]
+  @ [startStr endStr] | barSplit {-} range
+  @ start | parseNat startStr
+  @ end | parseNat endStr
+  | trk [%start start %end end]
+  | SOME [start end]
+  ; # datacase endStr
+  ; * b#{}
+  ;   # datacase start
+  ;   * NONE | NONE
+  ;   * (SOME s) | SOME [s 0]
+  ; * end
+  ;   # datacase (parseNat end)
+  ;   * NONE | NONE
+  ;   * (SOME e)
+  ;     # datacase start
+  ;     * NONE | NONE
+  ;     * (SOME s) | SOME [s e]
+
+= (handleRangeRequest fileSize content headers)
+| trk [%headers headers]
+| trk [%headerT (tabFromPairs headers)]
+| trk [%lookup (tabLookup b#{range} headers)]
+@ range | (parseRangeHeader (tabFromPairs headers))
+| trk [%range range]
+# datacase range
+* NONE
+  | NONE
+* (SOME [start end])
+  ; @ chunkSize (mul 2 1048576) ; 1MB
+  @ chunkSize fileSize
+  @ end | if isNone-end (min (add start chunkSize) (sub fileSize 1)) (min end (sub fileSize 1))
+  | trk [%start start %end end]
+  | trk [%willSlice start (add 1 (sub end start))]
+  @ partialContent | barSlice start (add 1 (sub end start)) content
+  @ resHeaders [(b#{Content-Length}, (natBar | showNat (barLen partialContent))) (b#{Content-Type}, b#{video/mp4}) (b#{Content-Range}, (barCat [b#{bytes } (natBar | showNat start) b#{-} (natBar | showNat end) b#{/} (natBar | showNat fileSize)])) (b#{Accept-Ranges}, b#{bytes})]
+  | trk [%insideHandleRangeReq resHeaders]
+  | SOME [206 partialContent resHeaders]
+
+;= testHeaders [(b#{Content-Type}, b#{application/octet-stream}) (b#{Content-Range}, (barCat [b#{bytes } (natBar | showNat 0) b#{-} (natBar | showNat 8) b#{/} (natBar | showNat 32)])) (b#{Accept-Ranges}, b#{bytes})]
+;| trk  testHeaders
+;=?= [206 b#{a} testHeaders]
+;  | trk [%testRan testHeaders]
+;  | handleRangeRequest 32 b#{asd} [0 8]
