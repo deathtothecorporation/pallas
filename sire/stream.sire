@@ -69,7 +69,7 @@
   | trk [%start start %end end]
   | trk [%willSlice start (add 1 (sub end start))]
   @ partialContent | barSlice start (add 1 (sub end start)) content
-  @ resHeaders [(b#{Content-Length}, (natBar | showNat (barLen partialContent))) (b#{Content-Type}, b#{video/mp4}) (b#{Content-Range}, (barCat [b#{bytes } (natBar | showNat start) b#{-} (natBar | showNat end) b#{/} (natBar | showNat fileSize)])) (b#{Accept-Ranges}, b#{bytes})]
+  @ resHeaders [(b#{Content-Length}, (natBar | showNat (barLen partialContent))) (b#{Content-Type}, b#{application/octet-stream}) (b#{Content-Range}, (barCat [b#{bytes } (natBar | showNat start) b#{-} (natBar | showNat end) b#{/} (natBar | showNat fileSize)])) (b#{Accept-Ranges}, b#{bytes})]
   | trk [%insideHandleRangeReq resHeaders]
   | SOME [206 partialContent resHeaders]
 
