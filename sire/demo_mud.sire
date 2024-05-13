@@ -1,0 +1,120 @@
+#### demo_mud <- prelude
+
+:| sire
+
+;..........;
+;...923....;
+;...814....;
+;...765....;
+;..........;
+
+; room 1
+= r1 [2 4 6 8]
+;     n e s w
+
+= r2 [0 3 1 9]
+= r3 [0 0 4 2]
+= r4 [3 0 5 1]
+= r5 [4 0 0 6]
+= r6 [1 5 0 7]
+= r7 [8 6 0 0]
+= r8 [9 1 7 0]
+= r9 [0 2 8 0]
+
+; TODO: have a mop load function.
+= mopT | tabFromPairs [[0 0] [1 r1] [2 r2] [3 r3] [4 r4] [5 r5] [6 r6] [7 r7] [8 r8] [9 r9]]
+
+
+= (dirIndex dir)
+| if (eql dir b{n}) | 0
+| if (eql dir b{e}) | 1
+| if (eql dir b{s}) | 2
+| if (eql dir b{w}) | 3
+0
+
+= (go dir cur)
+| trk [%dir dir]
+| trk [%cur cur]
+@ ourRoom (tabGet mopT cur)
+| trk [%our ourRoom]
+@ nextRoom | get ourRoom | dirIndex dir
+| trk [%next nextRoom]
+# switch nextRoom
+* 0
+  | trk [%bump]
+  cur
+* _
+  | trk [%from cur %to nextRoom]
+  nextRoom
+
+= (play cur next)
+| trk [%current cur]
+
+= (passable dir cur)
+@ ourRoom (tabGet mopT cur)
+@ nextRoom | get ourRoom | dirIndex dir
+# switch nextRoom
+* 0
+  b#{x}
+* _
+  b#{.}
+
+; xxxxx
+; xx.xx
+; x...x
+; xx.xx
+; xxxxx
+= (printRoom r)
+@ padT b{xxxxx}
+@ padL b{xx}
+@ padR b{xx}
+@ padB b{xxxxx}
+@ nort | barCat [padL (passable b{n} r) padR]
+@ east | barCat [(passable b{e} r) b{x}]
+@ sout | barCat [padL (passable b{s} r) padR]
+@ west | barCat [b{x} (passable b{w} r)]
+@ midd | b{.}
+@ prints [padT nort west midd east sout padB]
+| barIntercalateList b#{, }
+, padT
+, nort
+, [west midd east]
+, sout
+  padB
+
+= (printMap)
+| map printRoom (tabToList mopT)
+
+
+=?= (dirIndex b{n})
+  | 0
+
+=?= (dirIndex b{e})
+  | 1
+
+=?= (dirIndex b{s})
+  | 2
+
+=?= (dirIndex b{w})
+  | 3
+
+=?= (dirIndex b{wut})
+  | 0
+
+=?= (go b{n} 1)
+  | 2
+
+=?= (go b{e} 1)
+  | 4
+
+=?= (go b{s} 1)
+  | 6
+
+=?= (go b{w} 1)
+  | 8
+
+=?= (go b{w} 8)
+  | 8
+
+
+
