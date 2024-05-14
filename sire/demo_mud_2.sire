@@ -1,0 +1,118 @@
+#### demo_mud_2 <- prelude
+
+:| sire
+
+;102;
+;345;
+;060;
+
+= grid
+, [1 0 2]
+  [3 4 5]
+  [0 6 0]
+
+;= r [1  0 0 3 0]
+;;    id n e s w
+= rooms
+, [1 0 0 3 0] ;1
+  [2 0 0 5 0] ;2
+  [3 1 4 0 0] ;3, etc...
+  [4 0 5 6 3]
+  [5 2 0 0 4]
+  [6 4 0 0 0]
+
+= (flatten rows)
+@ head (fromSome listHead rows)
+@ tail (slice rows 1 (len rows))
+| ifNot (len tail)
+  head
+| weld head (flatten tail)
+
+= (flatGrid)
+| flatten grid
+
+; ++ [1 [0 0 3 0]]
+; ++ [2 [0 2 4 0]]
+; ++ [3 [0 0 5 0]]
+; ++ [4 [1 4 0 0]]
+; ++ [5 [0 5 6 3]]
+; ++ [6 [4 0 0 0]]
+= roomPairs | map (x & [(fromSome listHead x) (slice x 1 (len x))]) rooms
+= roomT | tabFromPairs roomPairs
+
+= (dirIndex dir)
+| if (eql dir b{n}) | 0
+| if (eql dir b{e}) | 1
+| if (eql dir b{s}) | 2
+| if (eql dir b{w}) | 3
+0
+
+= (go dir cur)
+| trk [%dir dir]
+| trk [%cur cur]
+@ ourRoom (tabGet roomT cur)
+| if (eql ourRoom 0)
+  | trk [%whereAreYou]
+  0
+| trk [%our ourRoom]
+@ nextRoom | get ourRoom | dirIndex dir
+| trk [%next nextRoom]
+# switch nextRoom
+* 0
+  | trk [%bump]
+  cur
+* _
+  | trk [%from cur %to nextRoom]
+  nextRoom
+
+= (play cur next)
+| trk [%current cur]
+
+= (print)
+@ roomz | map (x & tabGet roomT x) flatGrid
+@ top | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 0 3)
+@ mid | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 2 5)
+@ bot | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 6 9)
+| barUnlines | intersperse barNewline [top mid bot]
+
+= (me tile currentPosition)
+| if (eql tile currentPosition)
+  b#{@}
+| natBar | showNat tile
+
+
+=?= (dirIndex b{n})
+  | 0
+
+=?= (dirIndex b{e})
+  | 1
+
+=?= (dirIndex b{s})
+  | 2
+
+=?= (dirIndex b{w})
+  | 3
+
+=?= (dirIndex b{wut})
+  | 0
+
+=?= (go b{s} 4)
+  | 6
+
+=?= (go b{e} 4)
+  | 5
+
+=?= (go b{w} 4)
+  | 3
+
+=?= (go b{n} 1)
+  | 1
+
+=?= (go b{x} 4)
+  | 4
+
+=?= (go b{n} 9)
+  | 0
+
+print
+

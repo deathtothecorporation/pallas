@@ -3,23 +3,23 @@
 :| sire
 
 ;..........;
-;...923....;
-;...814....;
-;...765....;
+;...123....;
+;...456....;
+;...789....;
 ;..........;
 
-; room 1
-= r1 [2 4 6 8]
+; room 5
+= r5 [2 6 8 4]
 ;     n e s w
 
-= r2 [0 3 1 9]
-= r3 [0 0 4 2]
-= r4 [3 0 5 1]
-= r5 [4 0 0 6]
-= r6 [1 5 0 7]
-= r7 [8 6 0 0]
-= r8 [9 1 7 0]
-= r9 [0 2 8 0]
+= r1 [0 2 4 0]
+= r2 [0 3 5 1]
+= r3 [0 0 6 2]
+= r4 [1 5 7 0]
+= r6 [3 0 9 5]
+= r7 [4 8 0 0]
+= r8 [5 9 0 7]
+= r9 [6 0 0 8]
 
 ; TODO: have a mop load function.
 = mopT | tabFromPairs [[0 0] [1 r1] [2 r2] [3 r3] [4 r4] [5 r5] [6 r6] [7 r7] [8 r8] [9 r9]]
@@ -50,6 +50,9 @@
 = (play cur next)
 | trk [%current cur]
 
+; TODO: this should show _what_ is on this tile eventually
+; (not just if it's passable).
+; it's more of a showTile function
 = (passable dir cur)
 @ ourRoom (tabGet mopT cur)
 @ nextRoom | get ourRoom | dirIndex dir
@@ -59,32 +62,64 @@
 * _
   b#{.}
 
-; xxxxx
-; xx.xx
-; x...x
-; xx.xx
-; xxxxx
-= (printRoom r)
-@ padT b{xxxxx}
-@ padL b{xx}
-@ padR b{xx}
-@ padB b{xxxxx}
-@ nort | barCat [padL (passable b{n} r) padR]
-@ east | barCat [(passable b{e} r) b{x}]
-@ sout | barCat [padL (passable b{s} r) padR]
-@ west | barCat [b{x} (passable b{w} r)]
-@ midd | b{.}
-@ prints [padT nort west midd east sout padB]
-| barIntercalateList b#{, }
-, padT
-, nort
-, [west midd east]
-, sout
-  padB
+= padH b{xxx}
 
-= (printMap)
-| map printRoom (tabToList mopT)
+= (printRoomTop r)
+| barCat [b{x} (passable b{n} r) b{x}]
 
+= (me tile currentPosition)
+| if (eql tile currentPosition)
+  b#{@}
+| natBar | showNat tile
+
+= (printRoomMid r playerCurrent)
+@ east | barCat [(passable b{e} r)]
+@ west | barCat [(passable b{w} r)]
+;| barCat [west (natBar | showNat r) east]
+| barCat [west (me r playerCurrent) east]
+
+= (printRoomBot r)
+| barCat [b{x} (passable b{s} r) b{x}]
+
+= (printRoom h r playerCurrent)
+# switch h
+* 0
+  | printRoomTop r
+* 1
+  | printRoomMid r playerCurrent
+* 2
+  | printRoomBot r
+* _
+  b#{x}
+
+; x.x
+; ...
+; x.x
+= (printRoomLines r)
+@ topR | printRoomTop r
+@ midR | printRoomMid r
+@ botR | printRoomBot r
+| barUnlines | intersperse barNewline [topR midR botR]
+
+= (printMapLines)
+| map printRoomLines (tabKeysRow mopT)
+
+= (catHoriz mapRow player)
+; @ roomRows [0 1 2]
+@ t | barCat | map (printRoom 0 player) mapRow
+@ m | barCat | map (printRoom 1 player) mapRow
+@ b | barCat | map (printRoom 2 player) mapRow
+| barUnlines | intersperse barNewline [t m b]
+
+= (print player)
+@ t [1 2 3]
+@ m [4 5 6]
+@ b [7 8 9]
+@ top | catHoriz [1 2 3] player
+@ mid | catHoriz [4 5 6] player
+@ bot | catHoriz [7 8 9] player
+@ allRows | [top mid bot]
+| barUnlines | intersperse barNewline allRows
 
 =?= (dirIndex b{n})
   | 0
@@ -101,20 +136,20 @@
 =?= (dirIndex b{wut})
   | 0
 
-=?= (go b{n} 1)
+=?= (go b{n} 5)
   | 2
 
-=?= (go b{e} 1)
-  | 4
-
-=?= (go b{s} 1)
+=?= (go b{e} 5)
   | 6
 
-=?= (go b{w} 1)
+=?= (go b{s} 5)
   | 8
 
-=?= (go b{w} 8)
-  | 8
+=?= (go b{w} 5)
+  | 4
+
+=?= (go b{w} 4)
+  | 4
 
 
 
