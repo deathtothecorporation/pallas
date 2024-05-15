@@ -1,5 +1,8 @@
 #### demo_mud_2 <- prelude
 
+; stack run plunder save mud.seed sire/demo_mud_2.sire
+; stack run plunder repl mud.seed
+
 :| sire
 
 ;102;
@@ -48,38 +51,40 @@
 0
 
 = (go dir cur)
-| trk [%dir dir]
-| trk [%cur cur]
 @ ourRoom (tabGet roomT cur)
 | if (eql ourRoom 0)
   | trk [%whereAreYou]
   0
-| trk [%our ourRoom]
 @ nextRoom | get ourRoom | dirIndex dir
-| trk [%next nextRoom]
 # switch nextRoom
 * 0
-  | trk [%bump]
   cur
 * _
-  | trk [%from cur %to nextRoom]
   nextRoom
 
-= (play cur next)
-| trk [%current cur]
+; = (me tile currentPosition)
+; | if (eql tile currentPosition)
+;   b#{@}
+; | natBar | showNat tile
 
-= (print)
-@ roomz | map (x & tabGet roomT x) flatGrid
-@ top | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 0 3)
-@ mid | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 2 5)
-@ bot | barCat | map (x & (if (len x) b#{.} b#{#})) (slice roomz 6 9)
-| barUnlines | intersperse barNewline [top mid bot]
-
-= (me tile currentPosition)
-| if (eql tile currentPosition)
+= (printARoom current roomId)
+; TODO: could use to show directional openings:
+; ─ ┌ ┐└ ┘ ├ ┤ ┬ ┴ ┼ │
+; TODO: r is a single-entity list (this is dumb. has to do with map below)
+@ entrances | tabGet roomT roomId
+| if (eql current roomId)
   b#{@}
-| natBar | showNat tile
+| if (len entrances)
+  b#{.}
+b#{#}
 
+; TODO: show current player position
+= (print current message)
+@ roomz | map (x & tabGet roomT x) flatGrid
+@ top | barCat | map (roomId & printARoom current roomId) (slice flatGrid 0 3)
+@ mid | barCat | map (roomId & printARoom current roomId) (slice flatGrid 3 6)
+@ bot | barCat | map (roomId & printARoom current roomId) (slice flatGrid 6 9)
+| barUnlines | intersperse barNewline [top mid bot "" message "" b#{> }]
 
 =?= (dirIndex b{n})
   | 0
@@ -114,5 +119,56 @@
 =?= (go b{n} 9)
   | 0
 
-print
+= (message new old dir)
+| if (eql new old)
+  b#ouch
+| barCat [b#{moved } dir]
+
+= (tick currentPosition input)
+@ (dir) | barTakeWhile (neq newlineChar) input
+@ newPosition | go dir currentPosition
+@ msg | message currentPosition newPosition dir
+| (print newPosition msg, tick newPosition)
+
+print 1 (barUnlines b{welcome. move with any of n e s w followed by <enter>})
+= main | tick 1
+
+; = (showTodo todo)
+; ^ barWeld _ barNewline
+; | barIntercalateList barNewline
+; : (done,name) < listForEach todo
+; ^ barWeld _ name
+; | if done
+; * b#{[x] }
+; * b#{[ ] }
+; 
+; = (addItem name todo)
+; | listNub ((FALSE,name) :: todo)
+; 
+; = (deleteItem name todo)
+; | listFilter (_,n)&(n /= name) todo
+; 
+; = (doneItem name todo)
+; : (done,n) < listForEach todo
+; | (done || n==name, n)
+; 
+; = (step state input)
+; @ (cmd, item) | barSplitOne { } | barTakeWhile (neq newlineChar) input
+; # switch cmd
+; * b#add
+;   @ state | addItem item state
+;   | (showTodo state, step state)
+; * b#del
+;   @ state | deleteItem item state
+;   | (showTodo state, step state)
+; * b#done
+;   @ state | doneItem item state
+;   | (showTodo state, step state)
+; * b#show
+;   | (showTodo state, step state)
+; * _
+;   ^ (_, step state)
+;   | barCat [(showTodo state) barNewline b#{Invalid command: } input]
+; 
+; = main | step ~[]
 

@@ -316,7 +316,7 @@ runType defaultDir = subparser
 
     replWriteOpt =
         strOption ( long "save"
-                 <> value "/dev/null"
+                 <> value "/dev/stdout"
                  <> metavar "OUTPUT_FILE"
                  <> help "Where to write the formal output"
                   )
@@ -498,6 +498,7 @@ replSeed seedFileToShow outputFile = do
                 error ("bad noun")
             Just (output, st1) -> do
                 BS.hPutStr h output
+                hFlush h
                 unless (null input) do
                     interactive h st1
 
