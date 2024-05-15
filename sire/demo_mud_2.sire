@@ -17,12 +17,12 @@
 ;= r [1  0 0 3 0]
 ;;    id n e s w
 = rooms
-, [1 0 0 3 0 [b#{thing 1} b#{thing 2}]] ;1
-  [2 0 0 5 0 [b#{thing x}]] ;2
-  [3 1 4 0 0] ;3, etc...
-  [4 0 5 6 3]
-  [5 2 0 0 4]
-  [6 4 0 0 0]
+, [1 0 0 3 0 [b#{a rusty dagger} b#{3 coins}]]
+  [2 0 0 5 0 [b#{a human skull made of tin foil}]]
+  [3 1 4 0 0 [b#{footprints...} b#{detritus}]]
+  [4 0 5 6 3 [b#{many pinholes in the  walls} b#{tiny worms writhing on the ground}]]
+  [5 2 0 0 4 []]
+  [6 4 0 0 0 [b#{yourself, standing on the ceiling}]]
 
 = (flatten rows)
 @ head (fromSome listHead rows)
@@ -130,7 +130,7 @@ b#{#}
 = (lookMsg room)
 @ items | idx 4 | tabGet roomT room
 | if (len items)
-  | barCat | intersperse barNewline [b#{you see } (barCat items)]
+  | barCat | intersperse barNewline [b#{you see: } (barCat | intersperse barNewline items)]
 b#{there is nothing here}
 
 
