@@ -121,9 +121,9 @@ b#{#}
 ; TODO: show current player position
 = (print state message)
 @ roomz | map (x & tabGet roomT x) flatGrid
-@ top | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 0 3)
-@ mid | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 3 6)
-@ bot | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 6 9)
+@ top | barCat | map (roomId & printARoom state roomId) (slice flatGrid 0 3)
+@ mid | barCat | map (roomId & printARoom state roomId) (slice flatGrid 3 6)
+@ bot | barCat | map (roomId & printARoom state roomId) (slice flatGrid 6 9)
 | barUnlines | intersperse barNewline [top mid bot "" message "" b#{> }]
 
 =?= (dirIndex b{n})
@@ -179,8 +179,8 @@ b#{#}
 = (invalid state)
 [state b#{invalid command (n e s w l {get <id>})}]
 
-= (lookMsg room)
-@ items | idx 4 | tabGet roomT room
+= (lookMsg state)
+@ items | idx 4 | tabGet roomT (curPos state)
 | if (len items)
   | barCat | intersperse barNewline [b#{you see: } (barCat | intersperse barNewline items)]
 b#{there is nothing here}
