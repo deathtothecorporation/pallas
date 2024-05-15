@@ -17,8 +17,8 @@
 ;= r [1  0 0 3 0]
 ;;    id n e s w
 = rooms
-, [1 0 0 3 0] ;1
-  [2 0 0 5 0] ;2
+, [1 0 0 3 0 [b#{thing 1} b#{thing 2}]] ;1
+  [2 0 0 5 0 [b#{thing x}]] ;2
   [3 1 4 0 0] ;3, etc...
   [4 0 5 6 3]
   [5 2 0 0 4]
@@ -124,10 +124,44 @@ b#{#}
   b#ouch
 | barCat [b#{moved } dir]
 
+= (invalid current)
+[current b#{invalid command (n e s w l {get <id>})}]
+
+= (lookMsg room)
+@ items | idx 4 | tabGet roomT room
+| if (len items)
+  | barCat | intersperse barNewline [b#{you see } (barCat items)]
+b#{there is nothing here}
+
+
+> Bar > Nat > (Nat, Bar)
+= (handleSingleCmd cmd current)
+| if (has cmd [b#n b#e b#s b#w])
+  @ new | go cmd current
+  @ msg | barCat | intersperse barNewline [(message new current cmd) (lookMsg new)]
+  [new msg]
+| if (eql cmd b#{l})
+  ; TODO:
+  [current (lookMsg current)]
+| invalid current
+
+
+= (handleDuoCmd cmd target current)
+| if (eql cmd b#{get})
+  ; TODO:
+  [current (barCat [b#{you get } (barCat | target)]) ]
+| invalid current
+
+= (ct input current)
+@ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
+| if (eql 1 | len cmd)
+* handleSingleCmd (idx 0 cmd) current
+* handleDuoCmd (idx 0 cmd) (drop 1 cmd) current
+
 = (tick currentPosition input)
-@ (dir) | barTakeWhile (neq newlineChar) input
-@ newPosition | go dir currentPosition
-@ msg | message currentPosition newPosition dir
+@ [newPosition msg] | ct input currentPosition
+; @ newPosition | go dir currentPosition
+; @ msg | message currentPosition newPosition dir
 | (print newPosition msg, tick newPosition)
 
 print 1 (barUnlines b{welcome. move with any of n e s w followed by <enter>})
