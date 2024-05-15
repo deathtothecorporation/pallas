@@ -16,6 +16,7 @@
 
 ;= r [1  0 0 3 0]
 ;;    id n e s w
+; TODO: change to a Tab (exits, items, description, creatures, etc)
 = rooms
 , [1 0 0 3 0 [b#{a rusty dagger} b#{3 coins}]]
   [2 0 0 5 0 [b#{a human skull made of tin foil}]]
@@ -23,6 +24,45 @@
   [4 0 5 6 3 [b#{many pinholes in the  walls} b#{tiny worms writhing on the ground}]]
   [5 2 0 0 4 []]
   [6 4 0 0 0 [b#{yourself, standing on the ceiling}]]
+
+= roomPairs | map (x & [(fromSome listHead x) (slice x 1 (len x))]) rooms
+= roomT | tabFromPairs roomPairs
+
+; generateInitialState
+= (gis)
+@ stats | tabFromPairs
+        , [b#hp 10]
+          [b#todo 100]
+| tabFromPairs
+, [b#rooms rooms]
+  [b#roomT roomT]
+  [b#grid grid]
+  [b#currentPosition 1]
+  [b#inventory []]
+  [b#stats stats]
+
+; TODO: Probably use Sets to do these "diffs" nicely
+= (up change oldState)
+@ key | (idx 0 change)
+@ val | (idx 1 change)
+| trk [%key key %val val]
+# switch key
+* b#playerMove
+  @ chgd | tabIns b#currentPosition val oldState
+  | trk [%chngddddd chgd]
+  chgd
+* _
+  oldState
+
+= (stateGet key state)
+| tabGet state key
+
+= (curPos state)
+| stateGet b#currentPosition state
+
+= (curRoom state)
+| tabGet (stateGet b#roomT state) (curPos state)
+
 
 = (flatten rows)
 @ head (fromSome listHead rows)
@@ -40,8 +80,6 @@
 ; ++ [4 [1 4 0 0]]
 ; ++ [5 [0 5 6 3]]
 ; ++ [6 [4 0 0 0]]
-= roomPairs | map (x & [(fromSome listHead x) (slice x 1 (len x))]) rooms
-= roomT | tabFromPairs roomPairs
 
 = (dirIndex dir)
 | if (eql dir b{n}) | 0
@@ -50,15 +88,17 @@
 | if (eql dir b{w}) | 3
 0
 
-= (go dir cur)
-@ ourRoom (tabGet roomT cur)
+; returns room id
+= (go dir state)
+@ ourRoom | curRoom state
+| trk [%our ourRoom]
 | if (eql ourRoom 0)
   | trk [%whereAreYou]
   0
 @ nextRoom | get ourRoom | dirIndex dir
 # switch nextRoom
 * 0
-  cur
+  | curPos state
 * _
   nextRoom
 
@@ -67,23 +107,23 @@
 ;   b#{@}
 ; | natBar | showNat tile
 
-= (printARoom current roomId)
+= (printARoom state roomId)
 ; TODO: could use to show directional openings:
 ; ─ ┌ ┐└ ┘ ├ ┤ ┬ ┴ ┼ │
 ; TODO: r is a single-entity list (this is dumb. has to do with map below)
 @ entrances | tabGet roomT roomId
-| if (eql current roomId)
+| if (eql (curPos state) roomId)
   b#{@}
 | if (len entrances)
   b#{.}
 b#{#}
 
 ; TODO: show current player position
-= (print current message)
+= (print state message)
 @ roomz | map (x & tabGet roomT x) flatGrid
-@ top | barCat | map (roomId & printARoom current roomId) (slice flatGrid 0 3)
-@ mid | barCat | map (roomId & printARoom current roomId) (slice flatGrid 3 6)
-@ bot | barCat | map (roomId & printARoom current roomId) (slice flatGrid 6 9)
+@ top | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 0 3)
+@ mid | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 3 6)
+@ bot | barCat | map (roomId & printARoom (curPos state) roomId) (slice flatGrid 6 9)
 | barUnlines | intersperse barNewline [top mid bot "" message "" b#{> }]
 
 =?= (dirIndex b{n})
@@ -101,31 +141,43 @@ b#{#}
 =?= (dirIndex b{wut})
   | 0
 
-=?= (go b{s} 4)
-  | 6
-
-=?= (go b{e} 4)
-  | 5
-
-=?= (go b{w} 4)
-  | 3
-
-=?= (go b{n} 1)
+=?= (curPos gis)
   | 1
 
-=?= (go b{x} 4)
-  | 4
+=?= (curRoom gis)
+  | [0 0 3 0 [b#{a rusty dagger} b#{3 coins}]]
 
-=?= (go b{n} 9)
-  | 0
+=?= 6
+  @ s | tabIns b#currentPosition 4 gis
+  | go b{s} s
 
-= (message new old dir)
-| if (eql new old)
+=?= 5
+  @ s | tabIns b#currentPosition 4 gis
+  | go b{e} s
+
+=?= 3
+  @ s | tabIns b#currentPosition 4 gis
+  | go b{w} s
+
+=?= 1
+  @ s | tabIns b#currentPosition 1 gis
+  | go b{n} s
+
+=?= 4
+  @ s | tabIns b#currentPosition 4 gis
+  | go b{x} s
+
+=?= 0
+  @ s | tabIns b#currentPosition 9 gis
+  | go b{n} s
+
+= (message newState oldState dir)
+| if (eql (tabGet newState b#currentPosition) (tabGet oldState b#currentPosition))
   b#ouch
 | barCat [b#{moved } dir]
 
-= (invalid current)
-[current b#{invalid command (n e s w l {get <id>})}]
+= (invalid state)
+[state b#{invalid command (n e s w l {get <id>})}]
 
 = (lookMsg room)
 @ items | idx 4 | tabGet roomT room
@@ -135,37 +187,44 @@ b#{there is nothing here}
 
 
 > Bar > Nat > (Nat, Bar)
-= (handleSingleCmd cmd current)
+= (handleSingleCmd cmd state)
 | if (has cmd [b#n b#e b#s b#w])
-  @ new | go cmd current
-  @ msg | barCat | intersperse barNewline [(message new current cmd) (lookMsg new)]
-  [new msg]
+  | trk [%cmdState state]
+  @ newRoomId | go cmd state
+  | trk [%rid newRoomId]
+  @ newState | up [b#playerMove newRoomId] state
+  | trk [%newS newState]
+  @ msg | barCat | intersperse barNewline [(message newState state cmd) (lookMsg newState)]
+  [newState msg]
 | if (eql cmd b#{l})
   ; TODO:
-  [current (lookMsg current)]
-| invalid current
+  [state (lookMsg state)]
+| invalid state
 
 
-= (handleDuoCmd cmd target current)
+= (handleDuoCmd cmd target state)
 | if (eql cmd b#{get})
   ; TODO:
-  [current (barCat [b#{you get } (barCat | target)]) ]
-| invalid current
+  [state (barCat [b#{you get } (barCat | target)]) ]
+| invalid state
 
-= (ct input current)
+; return state
+= (commandDo input state)
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
 | if (eql 1 | len cmd)
-* handleSingleCmd (idx 0 cmd) current
-* handleDuoCmd (idx 0 cmd) (drop 1 cmd) current
+* handleSingleCmd (idx 0 cmd) state
+* handleDuoCmd (idx 0 cmd) (drop 1 cmd) state
 
-= (tick currentPosition input)
-@ [newPosition msg] | ct input currentPosition
+= (tick state input)
+@ [changed msg] | commandDo input state
+| trk [%changed changed]
+@ newState | changed
 ; @ newPosition | go dir currentPosition
 ; @ msg | message currentPosition newPosition dir
-| (print newPosition msg, tick newPosition)
+| (print newState msg, tick newState)
 
 print 1 (barUnlines b{welcome. move with any of n e s w followed by <enter>})
-= main | tick 1
+= main | tick gis
 
 ; = (showTodo todo)
 ; ^ barWeld _ barNewline
