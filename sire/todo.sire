@@ -1,0 +1,42 @@
+#### todo <- prelude
+
+:| prelude
+
+= (showTodo todo)
+^ barWeld _ barNewline
+| barIntercalateList barNewline
+: (done,name) < listForEach todo
+^ barWeld _ name
+| if done
+* b#{[x] }
+* b#{[ ] }
+
+= (addItem name todo)
+| listNub ((FALSE,name) :: todo)
+
+= (deleteItem name todo)
+| listFilter (_,n)&(n /= name) todo
+
+= (doneItem name todo)
+: (done,n) < listForEach todo
+| (done || n==name, n)
+
+= (step state input)
+@ (cmd, item) | barSplitOne { } | barTakeWhile (neq newlineChar) input
+# switch cmd
+* b#add
+  @ state | addItem item state
+  | (showTodo state, step state)
+* b#del
+  @ state | deleteItem item state
+  | (showTodo state, step state)
+* b#done
+  @ state | doneItem item state
+  | (showTodo state, step state)
+* b#show
+  | (showTodo state, step state)
+* _
+  ^ (_, step state)
+  | barCat [(showTodo state) barNewline b#{Invalid command: } input]
+
+= main | step ~[]

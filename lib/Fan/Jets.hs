@@ -140,8 +140,8 @@ jetMatch cpin = do
         Nothing -> (when jetLike do notMatched) $> cpin
         Just (jetHash, exe) -> do
             if jetHash == pHash then do
-                hPutStrLn stderr (pad20 pinName "MATCHED")
-                dumpHashLine pinName hashText
+--              hPutStrLn stderr (pad20 pinName "MATCHED")
+--              dumpHashLine pinName hashText
                 pure case exe of
                          Nothing -> cpin
                          Just ex -> setExec (\env -> ex fallback env) cpin

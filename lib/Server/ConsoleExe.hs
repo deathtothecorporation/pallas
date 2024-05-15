@@ -316,7 +316,7 @@ runType defaultDir = subparser
 
     replWriteOpt =
         strOption ( long "save"
-                 <> value "/dev/null"
+                 <> value "/dev/stdout"
                  <> metavar "OUTPUT_FILE"
                  <> help "Where to write the formal output"
                   )
@@ -497,7 +497,11 @@ replSeed seedFileToShow outputFile = do
                 fullPrint result
                 error ("bad noun")
             Just (output, st1) -> do
+                byt <- F.saveSeed st1
+                writeFile seedFileToShow byt
+                -- traceM (ppShow (output, st1))
                 BS.hPutStr h output
+                hFlush h
                 unless (null input) do
                     interactive h st1
 
@@ -604,6 +608,8 @@ withMachineIn storeDir numWorkers enableSnaps machineAction = do
             eval <- evaluator numWorkers
             pure MACHINE_CONTEXT{lmdb,hw,eval,enableSnaps}
     with machineState machineAction
+
+
 
 runMachine :: Debug => FilePath -> ReplayFrom -> MachineOpts -> IO ()
 runMachine storeDir replayFrom (MachineOpts enableSnaps numWorkers) = do
