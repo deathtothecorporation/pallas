@@ -155,7 +155,6 @@
   | printEntrance entrances
 b#{#}
 
-; TODO: show current player position
 = (print state message)
 @ roomz | map (x & tabGet roomT x) flatGrid
 @ top | barCat | map (roomId & printARoom state roomId) (slice flatGrid 0 3)
@@ -217,12 +216,24 @@ b#{#}
 = (invalid state)
 [state b#{invalid command (n e s w l {get <id>})}]
 
+; TODO: Add IDs
 = (lookMsg state)
 @ items | idx 4 | tabGet roomT (curPos state)
 | if (len items)
   | barCat | intersperse barNewline [b#{you see: } (barCat | intersperse barNewline items)]
 b#{there is nothing here}
 
+= (helpMsg state)
+| barCat
+| intersperse barNewline
+  , b#{++ Command Help ++}
+    b#{==================}
+    b#{}
+    b#{ - Help: h (this command)}
+    b#{ - Moving: n e s w (to move north, east, south, west)}
+    b#{ - Look Around: l (will return a list of things with ids for further interaction}
+    b#{ - Inspect Things: i <ID> (ID of thing from "look")}
+    b#{ - Get Things: get <ID> (ID of thing from "look")}
 
 > Bar > Nat > (Nat, Bar)
 = (handleSingleCmd cmd state)
@@ -235,12 +246,16 @@ b#{there is nothing here}
   @ msg | barCat | intersperse barNewline [(message newState state cmd) (lookMsg newState)]
   [newState msg]
 | if (eql cmd b#{l})
-  ; TODO:
   [state (lookMsg state)]
+| if (eql cmd b#{h})
+  [state (helpMsg state)]
 | invalid state
 
 
 = (handleDuoCmd cmd target state)
+| if (eql cmd b#{i})
+  ; TODO:
+  [state (barCat [b#{you inspect } (barCat | target)]) ]
 | if (eql cmd b#{get})
   ; TODO:
   [state (barCat [b#{you get } (barCat | target)]) ]
