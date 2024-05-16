@@ -5,12 +5,12 @@
 
 :| sire
 
-;102;
+;172;
 ;345;
 ;060;
 
 = grid
-, [1 0 2]
+, [1 7 2]
   [3 4 5]
   [0 6 0]
 
@@ -18,16 +18,22 @@
 ;;    id n e s w
 ; TODO: change to a Tab (exits, items, description, creatures, etc)
 = rooms
-, [1 0 0 3 0 [b#{a rusty dagger} b#{3 coins}]]
-  [2 0 0 5 0 [b#{a human skull made of tin foil}]]
+, [1 0 7 3 0 [b#{a rusty dagger} b#{3 coins}]]     ;1
+  [2 0 0 5 7 [b#{a human skull made of tin foil}]] ;2
   [3 1 4 0 0 [b#{footprints...} b#{detritus}]]
-  [4 0 5 6 3 [b#{many pinholes in the  walls} b#{tiny worms writhing on the ground}]]
+  [4 7 5 6 3 [b#{many pinholes in the  walls} b#{tiny worms writhing on the ground}]]
   [5 2 0 0 4 []]
   [6 4 0 0 0 [b#{yourself, standing on the ceiling}]]
+  [7 0 2 4 1 [b#{a wide open space}]] ; 7
 
 = roomPairs | map (x & [(fromSome listHead x) (slice x 1 (len x))]) rooms
 = roomT | tabFromPairs roomPairs
 
+; TODO: allow for defining rooms, items, etc. all state in a separate file
+;       that gets ingested here.
+
+; TODO: have a separate items key in the state with unique IDs
+;       use these as entries in the rooms items list.
 ; generateInitialState
 = (gis)
 @ stats | tabFromPairs
@@ -111,10 +117,41 @@
 ; TODO: could use to show directional openings:
 ; ─ ┌ ┐└ ┘ ├ ┤ ┬ ┴ ┼ │
 ; TODO: r is a single-entity list (this is dumb. has to do with map below)
-@ entrances | tabGet roomT roomId
+@ entrances | take 4 | tabGet roomT roomId
 | if (eql (curPos state) roomId)
   b#{@}
 | if (len entrances)
+  | trk (map (neq 0) entrances)
+  | if (eql (map (neq 0) entrances) [1 1 1 1])
+    b#{┼}
+  | if (eql (map (neq 0) entrances) [0 1 1 1])
+    b#{┬}
+  | if (eql (map (neq 0) entrances) [1 1 0 1])
+    b#{┴}
+  | if (eql (map (neq 0) entrances) [1 1 1 0])
+    b{├}
+  | if (eql (map (neq 0) entrances) [1 0 1 1])
+    b{┤}
+  | if (eql (map (neq 0) entrances) [1 0 1 0])
+    b{│}
+  | if (eql (map (neq 0) entrances) [0 1 0 1])
+    b{─}
+  | if (eql (map (neq 0) entrances) [0 1 1 0])
+    b{┌}
+  | if (eql (map (neq 0) entrances) [0 0 1 1])
+    b{┐}
+  | if (eql (map (neq 0) entrances) [1 1 0 0])
+    b{└}
+  | if (eql (map (neq 0) entrances) [1 0 0 1])
+    b{┘}
+  | if (eql (map (neq 0) entrances) [1 0 0 0])
+    b{╵}
+  | if (eql (map (neq 0) entrances) [0 0 1 0])
+    b{╷}
+  | if (eql (map (neq 0) entrances) [0 0 0 1])
+    b{╴}
+  | if (eql (map (neq 0) entrances) [0 1 0 0])
+    b{╶}
   b#{.}
 b#{#}
 
@@ -145,7 +182,7 @@ b#{#}
   | 1
 
 =?= (curRoom gis)
-  | [0 0 3 0 [b#{a rusty dagger} b#{3 coins}]]
+  | [0 7 3 0 [b#{a rusty dagger} b#{3 coins}]]
 
 =?= 6
   @ s | tabIns b#currentPosition 4 gis
@@ -163,7 +200,8 @@ b#{#}
   @ s | tabIns b#currentPosition 1 gis
   | go b{n} s
 
-=?= 4
+; TODO: this means going "x" actually goes north, because of dirIndex 0
+=?= 7
   @ s | tabIns b#currentPosition 4 gis
   | go b{x} s
 
