@@ -113,46 +113,46 @@
 ;   b#{@}
 ; | natBar | showNat tile
 
+= (printEntrance eRow)
+  # switch (map (neq 0) eRow)
+  * [1 1 1 1]
+    b#{┼}
+  * [0 1 1 1]
+    b#{┬}
+  * [1 1 0 1]
+    b#{┴}
+  * [1 1 1 0]
+    b{├}
+  * [1 0 1 1]
+    b{┤}
+  * [1 0 1 0]
+    b{│}
+  * [0 1 0 1]
+    b{─}
+  * [0 1 1 0]
+    b{┌}
+  * [0 0 1 1]
+    b{┐}
+  * [1 1 0 0]
+    b{└}
+  * [1 0 0 1]
+    b{┘}
+  * [1 0 0 0]
+    b{╵}
+  * [0 0 1 0]
+    b{╷}
+  * [0 0 0 1]
+    b{╴}
+  * [0 1 0 0]
+    b{╶}
+  b#{.}
+
 = (printARoom state roomId)
-; TODO: could use to show directional openings:
-; ─ ┌ ┐└ ┘ ├ ┤ ┬ ┴ ┼ │
-; TODO: r is a single-entity list (this is dumb. has to do with map below)
 @ entrances | take 4 | tabGet roomT roomId
 | if (eql (curPos state) roomId)
   b#{@}
 | if (len entrances)
-  | trk (map (neq 0) entrances)
-  | if (eql (map (neq 0) entrances) [1 1 1 1])
-    b#{┼}
-  | if (eql (map (neq 0) entrances) [0 1 1 1])
-    b#{┬}
-  | if (eql (map (neq 0) entrances) [1 1 0 1])
-    b#{┴}
-  | if (eql (map (neq 0) entrances) [1 1 1 0])
-    b{├}
-  | if (eql (map (neq 0) entrances) [1 0 1 1])
-    b{┤}
-  | if (eql (map (neq 0) entrances) [1 0 1 0])
-    b{│}
-  | if (eql (map (neq 0) entrances) [0 1 0 1])
-    b{─}
-  | if (eql (map (neq 0) entrances) [0 1 1 0])
-    b{┌}
-  | if (eql (map (neq 0) entrances) [0 0 1 1])
-    b{┐}
-  | if (eql (map (neq 0) entrances) [1 1 0 0])
-    b{└}
-  | if (eql (map (neq 0) entrances) [1 0 0 1])
-    b{┘}
-  | if (eql (map (neq 0) entrances) [1 0 0 0])
-    b{╵}
-  | if (eql (map (neq 0) entrances) [0 0 1 0])
-    b{╷}
-  | if (eql (map (neq 0) entrances) [0 0 0 1])
-    b{╴}
-  | if (eql (map (neq 0) entrances) [0 1 0 0])
-    b{╶}
-  b#{.}
+  | printEntrance entrances
 b#{#}
 
 ; TODO: show current player position
