@@ -26,6 +26,47 @@
   [6 4 0 0 0 [b#{yourself, standing on the ceiling}]]
   [7 0 2 4 1 [b#{a wide open space}]] ; 7
 
+= (maxRow x)
+| foldl max (idx 0 x) x
+
+= items
+| tabFromPairs
+,
+  , 1
+    #
+    , roomId=1
+      look=(# b {a rusty dagger})
+      desc=(# b {it looks dull})
+, 2 #
+    , roomId=1
+      look=(# b {another thing})
+      desc=(# b {more more more})
+, 3 #
+    , roomId=2
+      look=(# b {yet another})
+      desc=(# b {even more})
+, 4 #
+    , roomId=2
+      look=(# b {fourth thing})
+      desc=(# b {more descrioptoin})
+        ;,   3
+        ;    #
+        ;    , roomId=3
+        ;      look=(# b {uniq})
+        ;      desc=(# b {uniq})
+
+        ;, 2 #[roomId=2 look=(# b {skull}) desc=(# b {its made of tin foil})]
+          ;, 3
+          ;  #
+          ;  , roomId=3
+          ;    look=(# b {footprints})
+          ;    desc=(# b {They go off to the east})
+;        , 4
+;          #
+;          , roomId=4
+;            look=(# b {four})
+;            desc=(# b {They go off to the east})
+
 = roomPairs | map (x & [(fromSome listHead x) (slice x 1 (len x))]) rooms
 = roomT | tabFromPairs roomPairs
 
@@ -43,6 +84,7 @@
 , [b#rooms rooms]
   [b#roomT roomT]
   [b#grid grid]
+  [b#items items]
   [b#currentPosition 1]
   [b#inventory []]
   [b#stats stats]
