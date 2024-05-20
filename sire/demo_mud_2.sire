@@ -31,24 +31,26 @@
 
 = items
 | tabFromPairs
-,
-  , 1
-    #
-    , roomId=1
-      look=(# b {a rusty dagger})
-      desc=(# b {it looks dull})
-, 2 #
-    , roomId=1
-      look=(# b {another thing})
-      desc=(# b {more more more})
-, 3 #
-    , roomId=2
-      look=(# b {yet another})
-      desc=(# b {even more})
-, 4 #
-    , roomId=2
-      look=(# b {fourth thing})
-      desc=(# b {more descrioptoin})
+++  , 1
+    | tabFromPairs
+    ,  [b#roomId 1]
+       [b#look b#{a rusty dagger}]
+       [b#desc b#{it looks dull}]
+++  , 2
+    | tabFromPairs
+    , [b#roomId 1]
+      [b#look (# b {another thing})]
+      [b#desc (# b {more more more})]
+++  , 3
+    | tabFromPairs
+    , [b#roomId 2]
+      [b#look b#{yet another}]
+      [b#desc b#{even more}]
+++  , 4
+    | tabFromPairs
+    , [b#roomId 2]
+      [b#look (# b {fourth thing})]
+      [b#desc (# b {more descrioptoin})]
         ;,   3
         ;    #
         ;    , roomId=3
