@@ -144,12 +144,29 @@
 = (exitsGet roomId state)
 | tabGet (roomGet roomId state) b#exits
 
+= (itemGet id state)
+| tabGet (stateGet b#items state) id
+
 = (curPos state)
 | stateGet b#currentPosition state
 
 = (curRoom state)
 | tabGet (stateGet b#roomT state) (curPos state)
 
+= (itemLocationSetPlayer itemId playerId state)
+@ oldLocs | stateGet b#itemLocations state
+| trk [%oldLocs oldLocs]
+; @ oldItemLoc | tabGet oldLocs itemId
+@ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+| trk [%newItemLoc newItemLoc]
+@ newLocs | tabIns itemId newItemLoc oldLocs
+| trk [%newLocs newLocs]
+@ newState | tabIns b#itemLocations newLocs state
+| trk [%newState newState]
+newState
+
+;= (itemLocationSetRoom itemId roomId state)
+;0
 
 = (flatten rows)
 @ head (fromSome listHead rows)
@@ -328,12 +345,10 @@ b#{#}
 @ ids | map inc | gen (len | thingList) id
 | zip ids thingList
 
+; TODO: Deprecated; remove
 > List > Row Pairs
 = (itemLooksMsg items)
-; TODO:
-@ et | enumerateThings | listFromRow (itemLooks items)
-| trk [%lookitemmsg et]
-et
+| enumerateThings | listFromRow (itemLooks items)
 
 ; TODO: Add room description
 = (lookMsg roomId state)
@@ -378,6 +393,43 @@ b#{there is nothing here}
   [state (helpMsg state)]
 | invalid state
 
+= (getItemIdFromEnumerated enumeratedId roomId state)
+@ itemIds | getItemIds roomId state
+| get itemIds (dec enumeratedId)
+; identify which item id this id denotes
+;   - see what transient IDs come out of enumeration
+;   - derive actual item ID from this
+
+=?= 2
+  ; the first item in room 2
+  | getItemIdFromEnumerated 1 2 gis
+
+=?= 3
+  ; the second item in room 2
+  | getItemIdFromEnumerated 2 2 gis
+
+=?= 1
+  | getItemIdFromEnumerated 1 1 gis
+
+; given a room id and an enumerated item id, pick up that item.
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (takeItemId playerId enumeratedId roomId state)
+@ itemId | getItemIdFromEnumerated enumeratedId roomId state
+@ item | itemGet itemId state
+@ newState | itemLocationSetPlayer itemId playerId state
+@ msg | barCat [b#{you got } (tabGet item b#look)]
+[newState msg]
+
+; TODO
+; given a room id and an enumerated inventory id, drop up that item.
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (dropItemId playerId enumeratedId roomId state)
+;@ itemId | getItemIdFromEnumerated enumeratedId roomId state
+;@ item | itemGet itemId state
+;@ newState | itemLocationSetPlayer itemId playerId state
+;@ msg | barCat [b#{you got } (tabGet item b#look)]
+;[newState msg]
+0
 
 = (handleDuoCmd cmd target state)
 | if (eql cmd b#{i})
@@ -385,7 +437,7 @@ b#{there is nothing here}
   [state (barCat [b#{you inspect } (barCat | target)]) ]
 | if (eql cmd b#{get})
   ; TODO:
-  [state (barCat [b#{you get } (barCat | target)]) ]
+  | takeItemId 9 target (curPos state) state
 | invalid state
 
 ; return state
