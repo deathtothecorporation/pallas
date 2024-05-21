@@ -10,10 +10,17 @@
 ;060;
 
 ; TODO / IDEAS
-; - room descriptions
-; - manifest items
-; - generate stuff in rooms from random tables
-;   - then add AI...
+; - [x] room descriptions
+; - [ ] manifest items
+; - [ ] allow for defining rooms, items, etc. all state in a separate file
+;       that gets ingested here.
+; - [ ] generate stuff in rooms from random tables
+;   - [ ] then add AI...
+; - [ ] doors that open and close
+; - [ ] seen/unseen rooms
+; - [ ] line of sight? (don't show things going on in rooms you can't see)
+; - [ ] sounds?
+; - [ ] range of sound (like line of sight)
 
 > Bar > Maybe Nat
 = (parseNat bar)
@@ -132,9 +139,6 @@
       [b#name b#{Chase}]
       [b#currentPosition 5]
       [b#hp 10]
-
-; TODO: allow for defining rooms, items, etc. all state in a separate file
-;       that gets ingested here.
 
 ; generateInitialState
 = (gis)
@@ -461,7 +465,6 @@ b#{#}
   | barCat | intersperse barNewline (cat [itemPreamble printable])
 b#{your inventory is empty}
 
-; TODO: Add room description
 = (lookMsg playerId roomId state)
 @ roomDesc | [(tabGet (roomGet roomId state) b#desc)]
 @ otherPIds | filter (neq playerId) | getPlayerIds roomId state
