@@ -116,7 +116,7 @@
     | tabFromPairs
     , [b#connected 0]
       [b#name b#{Chase}]
-      [b#currentPosition 9]
+      [b#currentPosition 5]
       [b#hp 10]
 
 ; TODO: allow for defining rooms, items, etc. all state in a separate file
@@ -178,6 +178,18 @@
 
 = (curRoom playerId state)
 | tabGet (stateGet b#roomT state) (curPos playerId state)
+
+; = (getPlayerIds roomId state)
+; | filter neq-0
+; | map (filterByRoomId roomId)
+; | tabToPairs
+; | stateGet b#itemLocations state
+
+; general purpose "get all x val in map" function
+> Tab > Row
+= (tabGetValsOfKey t key)
+| listToRow
+| listMap (x & (tabGet x key)) (tabValsList t)
 
 = (itemLocationSetPlayer itemId playerId state)
 @ oldLocs | stateGet b#itemLocations state
@@ -274,6 +286,8 @@ newState
 @ entrances | (tabGet (roomGet roomId state) b#exits)
 | if (eql (curPos playerId state) roomId)
   b#{@}
+| if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
+  b#{ɐ}
 | if (len entrances)
   | printEntrance entrances
 b#{#}
@@ -348,20 +362,22 @@ b#{#}
   @ s | tabIns b#players updPlayers gis
   | go 1 b{n} s
 
-= (message newState oldState dir)
-| if (eql (tabGet newState b#currentPosition) (tabGet oldState b#currentPosition))
+= (message playerId newState oldState dir)
+| if (eql (curPos playerId newState) (curPos playerId oldState))
   b#ouch
 | barCat [b#{moved } dir]
 
 = (invalid state)
-[state b#{invalid command (n e s w l {get <id>})}]
+[state b#{invalid command (h for help)}]
 
-= (filterByRoomId roomId pair)
-; pair == [roomId roomTab]
-@ roomIdInPair | tabGet (idx 1 pair) b#roomId
-| if (eql roomId roomIdInPair)
+= (filterBy property value pair)
+@ propInPair | tabGet (idx 1 pair) property
+| if (eql value propInPair)
   (idx 0 pair)
 0
+
+= (filterByRoomId roomId pair)
+| filterBy b#roomId roomId pair
 
 = (getItemIds roomId state)
 | filter neq-0
@@ -369,20 +385,29 @@ b#{#}
 | tabToPairs
 | stateGet b#itemLocations state
 
+= (getPlayerIds roomId state)
+| filter neq-0
+| map (filterBy b#currentPosition roomId)
+| tabToPairs
+| stateGet b#players state
+
 = (filterItems itemIds state)
 | tabFromPairs
 | map (x & [x (tabGet (stateGet b#items state) x)]) itemIds
 
-; TODO: add general purpose "get all x val in map" function
-> Tab > Row
-= (tabGetValsOfKey t key)
-| listToRow
-| listMap (x & (tabGet x key)) (tabValsList t)
+= (filterPlayers playerIds state)
+| tabFromPairs
+| map (x & [x (tabGet (stateGet b#players state) x)]) playerIds
 
 ; only get the 'look' of each item in an item map
 > Tab > Row
 = (itemLooks items)
 | tabGetValsOfKey items b#look
+
+; only get the 'name' of each player in a player map
+> Tab > Row
+= (playerNames playersT)
+| tabGetValsOfKey playersT b#name
 
 ; Get an ID-prepended pairs list - for selecting by identifier
 > List > Row Pairs
@@ -391,24 +416,29 @@ b#{#}
 @ ids | map inc | gen (len | thingList) id
 | zip ids thingList
 
-; TODO: Deprecated; remove
-> List > Row Pairs
-= (itemLooksMsg items)
-| enumerateThings | listFromRow (itemLooks items)
-
 ; TODO: Add room description
-= (lookMsg roomId state)
+= (lookMsg playerId roomId state)
+@ otherPIds | filter (neq playerId) | getPlayerIds roomId state
+@ players | filterPlayers otherPIds state
+@ enumeratedPlayers | enumerateThings | playerNames players
+| trk [%ep enumeratedPlayers]
 @ itemIds | getItemIds roomId state ; row of ids
 @ items | filterItems itemIds state ; filtered map
 @ enumerated | enumerateThings | itemLooks items
+@ playerPreamble [b#{players here: }]
+@ printablePlayers | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumeratedPlayers
 @ printableEnumerated | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumerated
-@ preamble |
-           , b#{you see:}
-             b#{}
-             b#{id   item}
-             b#{------------}
+@ itemPreamble |
+               , b#{things here:}
+                 b#{}
+                 b#{id   item}
+                 b#{------------}
+| if | and (len otherPIds) (len itemIds)
+  | barCat | intersperse barNewline (cat [playerPreamble printablePlayers b#{} itemPreamble printableEnumerated])
+| if (len otherPIds)
+  | barCat | intersperse barNewline (cat [playerPreamble printablePlayers])
 | if (len itemIds)
-  | barCat | intersperse barNewline (weld preamble printableEnumerated)
+  | barCat | intersperse barNewline (cat [itemPreamble printableEnumerated])
 b#{there is nothing here}
 
 = (helpMsg state)
@@ -419,23 +449,26 @@ b#{there is nothing here}
     b#{}
     b#{ - Help: h (this command)}
     b#{ - Moving: n e s w (to move north, east, south, west)}
+    b#{ - Inventory: i (will return a list of things with ids for further interaction}
     b#{ - Look Around: l (will return a list of things with ids for further interaction}
     b#{ - Inspect Things: i <ID> (ID of thing from "look")}
     b#{ - Get Things: get <ID> (ID of thing from "look")}
 
 > Bar > Nat > (Nat, Bar)
-= (handleSingleCmd cmd state)
+= (handleSingleCmd playerId cmd state)
 | trk [%handlingSingle]
 | if (has cmd [b#n b#e b#s b#w])
   | trk [%cmdState state]
-  @ newRoomId | go 1 cmd state
+  @ newRoomId | go playerId cmd state
   | trk [%rid newRoomId]
-  @ newState | movePlayer 1 newRoomId state
+  @ newState | movePlayer playerId newRoomId state
   | trk [%newS newState]
-  @ msg | barCat | intersperse barNewline [(message newState state cmd) (lookMsg newRoomId newState)]
+  @ msg | barCat | intersperse barNewline [(message playerId newState state cmd) (lookMsg playerId newRoomId newState)]
   [newState msg]
+| if (eql cmd b#{i})
+  [state (inventory playerId state)]
 | if (eql cmd b#{l})
-  [state (lookMsg (curPos state) state)]
+  [state (lookMsg playerId (curPos playerId state) state)]
 | if (eql cmd b#{h})
   | trk [%gettinghelp]
   [state (helpMsg state)]
@@ -448,21 +481,23 @@ b#{there is nothing here}
 ;   - see what transient IDs come out of enumeration
 ;   - derive actual item ID from this
 
-=?= 2
-  ; the first item in room 2
-  | getItemIdFromEnumerated 1 2 gis
-
 =?= 3
   ; the second item in room 2
   | getItemIdFromEnumerated 2 2 gis
 
+=?= 2
+  ; the first item in room 2
+  | getItemIdFromEnumerated 1 2 gis
+
 =?= 1
   | getItemIdFromEnumerated 1 1 gis
 
+; TODO: its always getting id 1!
 ; given a room id and an enumerated item id, pick up that item.
 > PlayerId > EnumID > RoomID > State > (State, Msg)
 = (takeItemId playerId enumeratedId roomId state)
 @ itemId | getItemIdFromEnumerated enumeratedId roomId state
+| trk [%itemId itemId]
 @ item | itemGet itemId state
 @ newState | itemLocationSetPlayer itemId playerId state
 @ msg | barCat [b#{you got } (tabGet item b#look)]
@@ -489,60 +524,29 @@ b#{there is nothing here}
   | takeItemId playerId target (curPos playerId state) state
 | invalid state
 
-; return state
+; return [state msg]
+> PlayerID > Input > State > (State, Message)
 = (commandDo playerId input state)
 | trk [%cmdo input playerId]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
 | if (eql 1 | len cmd)
-* handleSingleCmd (idx 0 cmd) state
+* handleSingleCmd playerId (idx 0 cmd) state
 * handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
 
-= (tick state input)
-@ [changed msg] | commandDo 1 input state ; TODO: change hardcoded 1
+; TODO:
+; tick should not have player ID.
+; tick should just emanate all the state out. right now it only happens
+; in response to commands, but it should be adjusted for game loop timer.
+; this should be a general purpose "update game state".
+; we need a DIFFERENT thing for "show game world to player X", which will
+; come into play when we're HTTPing.
+; right now, the UI **IS** the game state, which is making adding "multiplayer"
+; confusing.
+= (tick playerId state input)
+@ [changed msg] | commandDo playerId input state
 | trk [%changed changed]
 @ newState | changed
-; @ msg | message currentPosition newPosition dir
-| (print 1 newState msg, tick newState)
+| (print playerId newState msg, tick playerId newState)
 
-print 1 0 (barUnlines b{welcome. for help, type h<enter>})
-= main | tick gis
-
-; = (showTodo todo)
-; ^ barWeld _ barNewline
-; | barIntercalateList barNewline
-; : (done,name) < listForEach todo
-; ^ barWeld _ name
-; | if done
-; * b#{[x] }
-; * b#{[ ] }
-; 
-; = (addItem name todo)
-; | listNub ((FALSE,name) :: todo)
-; 
-; = (deleteItem name todo)
-; | listFilter (_,n)&(n /= name) todo
-; 
-; = (doneItem name todo)
-; : (done,n) < listForEach todo
-; | (done || n==name, n)
-; 
-; = (step state input)
-; @ (cmd, item) | barSplitOne { } | barTakeWhile (neq newlineChar) input
-; # switch cmd
-; * b#add
-;   @ state | addItem item state
-;   | (showTodo state, step state)
-; * b#del
-;   @ state | deleteItem item state
-;   | (showTodo state, step state)
-; * b#done
-;   @ state | doneItem item state
-;   | (showTodo state, step state)
-; * b#show
-;   | (showTodo state, step state)
-; * _
-;   ^ (_, step state)
-;   | barCat [(showTodo state) barNewline b#{Invalid command: } input]
-; 
-; = main | step ~[]
-
+; print 2 0 (barUnlines b{welcome. for help, type h<enter>})
+= main | tick 1 gis
