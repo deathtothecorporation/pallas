@@ -104,23 +104,46 @@
     , [b#roomId 6]
       [b#playerId 0]
 
+= playersT
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 1]
+      [b#hp 10]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 9]
+      [b#hp 10]
+
 ; TODO: allow for defining rooms, items, etc. all state in a separate file
 ;       that gets ingested here.
 
 ; generateInitialState
 = (gis)
-@ stats | tabFromPairs
-        , [b#hp 10]
-          [b#todo 100]
 | tabFromPairs
 , [b#rooms rooms]
   [b#roomT rooms]
   [b#grid grid]
   [b#items items]
-  [b#currentPosition 1]
   [b#inventory []]
-  [b#stats stats]
   [b#itemLocations itemLocations]
+  [b#players playersT]
+
+= (movePlayer playerId moveTo state)
+@ players | (tabGet state b#players)
+| trk [%players players]
+@ player | tabGet players playerId
+| trk [%player player]
+@ pMoved | tabIns b#currentPosition moveTo player
+| trk [%pMoved pMoved]
+@ updPlayers | tabIns playerId pMoved players
+| trk [%updPlayers updPlayers]
+; @ updPlayers | tabIns playerId pMoved players
+| tabIns b#players updPlayers state
 
 ; TODO: Probably use Sets to do these "diffs" nicely
 = (up change oldState)
@@ -147,11 +170,14 @@
 = (itemGet id state)
 | tabGet (stateGet b#items state) id
 
-= (curPos state)
-| stateGet b#currentPosition state
+= (playerGet id state)
+| tabGet (stateGet b#players state) id
 
-= (curRoom state)
-| tabGet (stateGet b#roomT state) (curPos state)
+= (curPos playerId state)
+| tabGet (playerGet playerId state) b#currentPosition
+
+= (curRoom playerId state)
+| tabGet (stateGet b#roomT state) (curPos playerId state)
 
 = (itemLocationSetPlayer itemId playerId state)
 @ oldLocs | stateGet b#itemLocations state
@@ -193,15 +219,15 @@ newState
 0
 
 ; returns room id
-= (go dir state)
-| if (eql (curRoom state) 0)
+= (go playerId dir state)
+| if (eql (curRoom playerId state) 0)
   | trk [%whereAreYou]
   0
-@ nextRoom | get (tabGet (curRoom state) b#exits) (dirIndex dir)
+@ nextRoom | get (tabGet (curRoom playerId state) b#exits) (dirIndex dir)
 | trk [%next nextRoom]
 # switch nextRoom
 * 0
-  | curPos state
+  | curPos playerId state
 * _
   nextRoom
 
@@ -244,18 +270,18 @@ newState
     b{╶}
   b#{.}
 
-= (printARoom state roomId)
+= (printARoom playerId state roomId)
 @ entrances | (tabGet (roomGet roomId state) b#exits)
-| if (eql (curPos state) roomId)
+| if (eql (curPos playerId state) roomId)
   b#{@}
 | if (len entrances)
   | printEntrance entrances
 b#{#}
 
-= (print state message)
-@ top | barCat | map (roomId & printARoom state roomId) (slice flatGrid 0 3)
-@ mid | barCat | map (roomId & printARoom state roomId) (slice flatGrid 3 6)
-@ bot | barCat | map (roomId & printARoom state roomId) (slice flatGrid 6 9)
+= (print playerId state message)
+@ top | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 0 3)
+@ mid | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 3 6)
+@ bot | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 6 9)
 | barUnlines | intersperse barNewline [top mid bot "" message "" b#{> }]
 
 =?= (dirIndex b{n})
@@ -273,34 +299,54 @@ b#{#}
 =?= (dirIndex b{wut})
   | 0
 
-=?= (curPos gis)
+=?= (curPos 1 gis)
   | 1
 
 =?= 6
-  @ s | tabIns b#currentPosition 4 gis
-  | go b{s} s
+  @ s | movePlayer 1 4 gis
+  | go 1 b{s} s
 
 =?= 5
-  @ s | tabIns b#currentPosition 4 gis
-  | go b{e} s
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{e} s
 
 =?= 3
-  @ s | tabIns b#currentPosition 4 gis
-  | go b{w} s
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{w} s
 
 =?= 1
-  @ s | tabIns b#currentPosition 1 gis
-  | go b{n} s
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 1 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{n} s
 
 ; TODO: this means going "x" actually goes north, because of dirIndex 0
 =?= 7
-  @ s | tabIns b#currentPosition 4 gis
-  | go b{x} s
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{x} s
 
 ; you're nowhere, can't go anywhere.
 =?= 0
-  @ s | tabIns b#currentPosition 9 gis
-  | go b{n} s
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 9 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{n} s
 
 = (message newState oldState dir)
 | if (eql (tabGet newState b#currentPosition) (tabGet oldState b#currentPosition))
@@ -379,17 +425,19 @@ b#{there is nothing here}
 
 > Bar > Nat > (Nat, Bar)
 = (handleSingleCmd cmd state)
+| trk [%handlingSingle]
 | if (has cmd [b#n b#e b#s b#w])
   | trk [%cmdState state]
-  @ newRoomId | go cmd state
+  @ newRoomId | go 1 cmd state
   | trk [%rid newRoomId]
-  @ newState | up [b#playerMove newRoomId] state
+  @ newState | movePlayer 1 newRoomId state
   | trk [%newS newState]
   @ msg | barCat | intersperse barNewline [(message newState state cmd) (lookMsg newRoomId newState)]
   [newState msg]
 | if (eql cmd b#{l})
   [state (lookMsg (curPos state) state)]
 | if (eql cmd b#{h})
+  | trk [%gettinghelp]
   [state (helpMsg state)]
 | invalid state
 
@@ -431,31 +479,32 @@ b#{there is nothing here}
 ;[newState msg]
 0
 
-= (handleDuoCmd cmd target state)
+= (handleDuoCmd playerId cmd target state)
+| trk [%handlingDuo]
 | if (eql cmd b#{i})
   ; TODO:
   [state (barCat [b#{you inspect } (barCat | target)]) ]
 | if (eql cmd b#{get})
   ; TODO:
-  | takeItemId 9 target (curPos state) state
+  | takeItemId playerId target (curPos playerId state) state
 | invalid state
 
 ; return state
-= (commandDo input state)
+= (commandDo playerId input state)
+| trk [%cmdo input playerId]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
 | if (eql 1 | len cmd)
 * handleSingleCmd (idx 0 cmd) state
-* handleDuoCmd (idx 0 cmd) (drop 1 cmd) state
+* handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
 
 = (tick state input)
-@ [changed msg] | commandDo input state
+@ [changed msg] | commandDo 1 input state ; TODO: change hardcoded 1
 | trk [%changed changed]
 @ newState | changed
-; @ newPosition | go dir currentPosition
 ; @ msg | message currentPosition newPosition dir
-| (print newState msg, tick newState)
+| (print 1 newState msg, tick newState)
 
-print 1 (barUnlines b{welcome. move with any of n e s w followed by <enter>})
+print 1 0 (barUnlines b{welcome. for help, type h<enter>})
 = main | tick gis
 
 ; = (showTodo todo)
