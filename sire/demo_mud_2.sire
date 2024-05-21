@@ -13,6 +13,22 @@
 ; - generate stuff in rooms from random tables
 ;   - then add AI...
 
+> Bar > Maybe Nat
+= (parseNat bar)
+@ wid (barLen bar)
+@ hed (barIdx 0 bar)
+| maybeGuardNot (isZero wid)
+| maybeGuard    (isDigit hed)
+@ acc (sub hed {0})
+^ (_ acc 1)
+? (go acc ix)
+| if (gte ix wid) (SOME acc)
+@ c (barGet bar ix)
+| maybeGuard (isDigit c)
+@ !acc (add (mul 10 acc) (sub c {0}))
+| go acc inc-ix
+
+
 = grid
 , [1 7 2]
   [3 4 5]
@@ -203,6 +219,18 @@
 | trk [%newState newState]
 newState
 
+= (itemLocationSetRoom itemId roomId state)
+@ oldLocs | stateGet b#itemLocations state
+| trk [%oldLocs oldLocs]
+; @ oldItemLoc | tabGet oldLocs itemId
+@ newItemLoc | tabFromPairs [[b#playerId 0] [b#roomId roomId]]
+| trk [%newItemLoc newItemLoc]
+@ newLocs | tabIns itemId newItemLoc oldLocs
+| trk [%newLocs newLocs]
+@ newState | tabIns b#itemLocations newLocs state
+| trk [%newState newState]
+newState
+
 ;= (itemLocationSetRoom itemId roomId state)
 ;0
 
@@ -379,9 +407,18 @@ b#{#}
 = (filterByRoomId roomId pair)
 | filterBy b#roomId roomId pair
 
+= (filterByPlayerId playerId pair)
+| filterBy b#playerId playerId pair
+
 = (getItemIds roomId state)
 | filter neq-0
 | map (filterByRoomId roomId)
+| tabToPairs
+| stateGet b#itemLocations state
+
+= (getInventoryIds playerId state)
+| filter neq-0
+| map (filterByPlayerId playerId)
 | tabToPairs
 | stateGet b#itemLocations state
 
@@ -415,6 +452,20 @@ b#{#}
 ; start at 1
 @ ids | map inc | gen (len | thingList) id
 | zip ids thingList
+
+= (inventoryMsg playerId state)
+@ itemIds | getInventoryIds playerId state
+@ items | filterItems itemIds state
+@ enumerated | enumerateThings | itemLooks items
+@ printable | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumerated
+@ itemPreamble |
+               , b#{you are carrying:}
+                 b#{}
+                 b#{id   item}
+                 b#{------------}
+| if (len itemIds)
+  | barCat | intersperse barNewline (cat [itemPreamble printable])
+b#{your inventory is empty}
 
 ; TODO: Add room description
 = (lookMsg playerId roomId state)
@@ -453,6 +504,7 @@ b#{there is nothing here}
     b#{ - Look Around: l (will return a list of things with ids for further interaction}
     b#{ - Inspect Things: i <ID> (ID of thing from "look")}
     b#{ - Get Things: get <ID> (ID of thing from "look")}
+    b#{ - Drop Things: drop <ID> (ID of thing from "inventory")}
 
 > Bar > Nat > (Nat, Bar)
 = (handleSingleCmd playerId cmd state)
@@ -466,7 +518,7 @@ b#{there is nothing here}
   @ msg | barCat | intersperse barNewline [(message playerId newState state cmd) (lookMsg playerId newRoomId newState)]
   [newState msg]
 | if (eql cmd b#{i})
-  [state (inventory playerId state)]
+  [state (inventoryMsg playerId state)]
 | if (eql cmd b#{l})
   [state (lookMsg playerId (curPos playerId state) state)]
 | if (eql cmd b#{h})
@@ -475,11 +527,18 @@ b#{there is nothing here}
 | invalid state
 
 = (getItemIdFromEnumerated enumeratedId roomId state)
+| trk [%gettingEnumerated enumeratedId]
 @ itemIds | getItemIds roomId state
+| trk [%itemIds itemIds]
+; the list of enuemrated items will always correspond to the items in the room:
 | get itemIds (dec enumeratedId)
-; identify which item id this id denotes
-;   - see what transient IDs come out of enumeration
-;   - derive actual item ID from this
+
+= (getInventoryIdFromEnumerated enumeratedId playerId state)
+| trk [%gettingEnumerated enumeratedId]
+@ itemIds | getInventoryIds playerId state
+| trk [%itemIds itemIds]
+; the list of enuemrated items will always correspond to the items in the room:
+| get itemIds (dec enumeratedId)
 
 =?= 3
   ; the second item in room 2
@@ -492,7 +551,6 @@ b#{there is nothing here}
 =?= 1
   | getItemIdFromEnumerated 1 1 gis
 
-; TODO: its always getting id 1!
 ; given a room id and an enumerated item id, pick up that item.
 > PlayerId > EnumID > RoomID > State > (State, Msg)
 = (takeItemId playerId enumeratedId roomId state)
@@ -500,34 +558,42 @@ b#{there is nothing here}
 | trk [%itemId itemId]
 @ item | itemGet itemId state
 @ newState | itemLocationSetPlayer itemId playerId state
+@ nullMsg | b#{that's not something to get}
 @ msg | barCat [b#{you got } (tabGet item b#look)]
-[newState msg]
+| if itemId
+  [newState msg]
+[newState nullMsg]
 
 ; TODO
 ; given a room id and an enumerated inventory id, drop up that item.
 > PlayerId > EnumID > RoomID > State > (State, Msg)
 = (dropItemId playerId enumeratedId roomId state)
-;@ itemId | getItemIdFromEnumerated enumeratedId roomId state
-;@ item | itemGet itemId state
-;@ newState | itemLocationSetPlayer itemId playerId state
-;@ msg | barCat [b#{you got } (tabGet item b#look)]
-;[newState msg]
-0
+@ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
+| trk [%itemId itemId]
+@ item | itemGet itemId state
+@ newState | itemLocationSetRoom itemId roomId state
+@ nullMsg | b#{that's not something to drop}
+@ msg | barCat [b#{you dropped } (tabGet item b#look)]
+| if itemId
+  [newState msg]
+[newState nullMsg]
 
 = (handleDuoCmd playerId cmd target state)
-| trk [%handlingDuo]
+| trk [%handlingDuo cmd target]
+@ trgNat | fromSome 0 (parseNat (idx 0 target))
 | if (eql cmd b#{i})
   ; TODO:
-  [state (barCat [b#{you inspect } (barCat | target)]) ]
+  [state (barCat [b#{you inspect } (barCat | trgNat)]) ]
 | if (eql cmd b#{get})
-  ; TODO:
-  | takeItemId playerId target (curPos playerId state) state
+  | takeItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{drop})
+  | dropItemId playerId trgNat (curPos playerId state) state
 | invalid state
 
 ; return [state msg]
 > PlayerID > Input > State > (State, Message)
 = (commandDo playerId input state)
-| trk [%cmdo input playerId]
+| trk [%cmdo playerId input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
 | if (eql 1 | len cmd)
 * handleSingleCmd playerId (idx 0 cmd) state
