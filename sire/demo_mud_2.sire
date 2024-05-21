@@ -10,6 +10,8 @@
 ;060;
 
 ; TODO / IDEAS
+; - room descriptions
+; - manifest items
 ; - generate stuff in rooms from random tables
 ;   - then add AI...
 
@@ -34,42 +36,38 @@
   [3 4 5]
   [0 6 0]
 
-;= r [1  0 0 3 0]
-;;    id n e s w
-; TODO: change to a Tab (exits, items, description, creatures, etc)
-= rooms
-, [1 0 7 3 0 [b#{a rusty dagger} b#{3 coins}]]     ;1
-  [2 0 0 5 7 [b#{a human skull made of tin foil}]] ;2
-  [3 1 4 0 0 [b#{footprints...} b#{detritus}]]
-  [4 7 5 6 3 [b#{many pinholes in the  walls} b#{tiny worms writhing on the ground}]]
-  [5 2 0 0 4 []]
-  [6 4 0 0 0 [b#{yourself, standing on the ceiling}]]
-  [7 0 2 4 1 [b#{a wide open space}]] ; 7
-
-; TODO: add room description
+; exits: [0 0 3 0]
+;         n e s w
 = rooms
 | tabFromPairs
-++  , 1
+++  , 1 ; room ID
     | tabFromPairs
     , [b#exits [0 7 3 0]]
+      [b#desc b#{it's damp and sticky}]
 ++  , 2
     | tabFromPairs
     , [b#exits [0 0 5 7]]
+      [b#desc b#{the ceiling here is so high you can't see it}]
 ++  , 3
     | tabFromPairs
     , [b#exits [1 4 0 0]]
+      [b#desc b#{}]
 ++  , 4
     | tabFromPairs
     , [b#exits [7 5 6 3]]
+      [b#desc b#{}]
 ++  , 5
     | tabFromPairs
     , [b#exits [2 0 0 4]]
+      [b#desc b#{}]
 ++  , 6
     | tabFromPairs
     , [b#exits [4 0 0 0]]
+      [b#desc b#{}]
 ++  , 7
     | tabFromPairs
     , [b#exits [0 2 4 1]]
+      [b#desc b#{}]
 
 = (maxRow x)
 | foldl max (idx 0 x) x
@@ -151,16 +149,12 @@
 
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
-| trk [%players players]
 @ player | tabGet players playerId
-| trk [%player player]
 @ pMoved | tabIns b#currentPosition moveTo player
-| trk [%pMoved pMoved]
 @ updPlayers | tabIns playerId pMoved players
-| trk [%updPlayers updPlayers]
-; @ updPlayers | tabIns playerId pMoved players
 | tabIns b#players updPlayers state
 
+; Don't use this. poorly-conceived.
 ; TODO: Probably use Sets to do these "diffs" nicely
 = (up change oldState)
 @ key | (idx 0 change)
@@ -372,7 +366,7 @@ b#{#}
   @ s | tabIns b#players updPlayers gis
   | go 1 b{n} s
 
-; TODO: this means going "x" actually goes north, because of dirIndex 0
+; this means going "x" actually goes north, because of dirIndex 0
 =?= 7
   @ players | (tabGet b#players gis)
   @ us | tabGet players 1
@@ -392,8 +386,8 @@ b#{#}
 
 = (message playerId newState oldState dir)
 | if (eql (curPos playerId newState) (curPos playerId oldState))
-  b#ouch
-| barCat [b#{moved } dir]
+  | barCat [b#{** ouch **}]
+| barCat [b#{** moved } dir b#{ **}]
 
 = (invalid state)
 [state b#{invalid command (h for help)}]
@@ -469,6 +463,7 @@ b#{your inventory is empty}
 
 ; TODO: Add room description
 = (lookMsg playerId roomId state)
+@ roomDesc | [(tabGet (roomGet roomId state) b#desc)]
 @ otherPIds | filter (neq playerId) | getPlayerIds roomId state
 @ players | filterPlayers otherPIds state
 @ enumeratedPlayers | enumerateThings | playerNames players
@@ -485,12 +480,12 @@ b#{your inventory is empty}
                  b#{id   item}
                  b#{------------}
 | if | and (len otherPIds) (len itemIds)
-  | barCat | intersperse barNewline (cat [playerPreamble printablePlayers b#{} itemPreamble printableEnumerated])
+  | barCat | intersperse barNewline (cat [roomDesc playerPreamble printablePlayers b#{} itemPreamble printableEnumerated])
 | if (len otherPIds)
-  | barCat | intersperse barNewline (cat [playerPreamble printablePlayers])
+  | barCat | intersperse barNewline (cat [roomDesc playerPreamble printablePlayers])
 | if (len itemIds)
-  | barCat | intersperse barNewline (cat [itemPreamble printableEnumerated])
-b#{there is nothing here}
+  | barCat | intersperse barNewline (cat [roomDesc itemPreamble printableEnumerated])
+| barCat | intersperse barNewline (cat [roomDesc [b#{there is nothing here}]])
 
 = (helpMsg state)
 | barCat
@@ -559,8 +554,8 @@ b#{there is nothing here}
 | trk [%itemId itemId]
 @ item | itemGet itemId state
 @ newState | itemLocationSetPlayer itemId playerId state
-@ nullMsg | b#{that's not something to get}
-@ msg | barCat [b#{you got } (tabGet item b#look)]
+@ nullMsg | b#{** that's not something to get **}
+@ msg | barCat [b#{** you got } (tabGet item b#look) b#{ **}]
 | if itemId
   [newState msg]
 [newState nullMsg]
@@ -572,8 +567,8 @@ b#{there is nothing here}
 | trk [%itemId itemId]
 @ item | itemGet itemId state
 @ newState | itemLocationSetRoom itemId roomId state
-@ nullMsg | b#{that's not something to drop}
-@ msg | barCat [b#{you dropped } (tabGet item b#look)]
+@ nullMsg | b#{** that's not something to drop **}
+@ msg | barCat [b#{** you dropped } (tabGet item b#look) b#{ **}]
 | if itemId
   [newState msg]
 [newState nullMsg]
@@ -583,8 +578,8 @@ b#{there is nothing here}
 @ itemId | getItemIdFromEnumerated enumeratedId playerId state
 | trk [%itemId itemId]
 @ item | itemGet itemId state
-@ nullMsg | b#{that's not something to inspect}
-@ msg | barCat [b#{inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+@ nullMsg | b#{** that's not something to inspect **}
+@ msg | barCat [b#{** inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
 | if itemId
   [state msg]
 [state nullMsg]
@@ -594,8 +589,8 @@ b#{there is nothing here}
 @ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
 | trk [%itemId itemId]
 @ item | itemGet itemId state
-@ nullMsg | b#{that's not something to adore}
-@ msg | barCat [b#{adoring } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+@ nullMsg | b#{** that's not something to adore **}
+@ msg | barCat [b#{** adoring } (tabGet item b#look) b#{: } (tabGet item b#desc)]
 | if itemId
   [state msg]
 [state nullMsg]
