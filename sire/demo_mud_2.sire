@@ -500,11 +500,12 @@ b#{there is nothing here}
     b#{}
     b#{ - Help: h (this command)}
     b#{ - Moving: n e s w (to move north, east, south, west)}
-    b#{ - Inventory: i (will return a list of things with ids for further interaction}
-    b#{ - Look Around: l (will return a list of things with ids for further interaction}
+    b#{ - Inventory: i (will return a list of things with ids for further interaction)}
+    b#{ - Look Around: l (will return a list of things with ids for further interaction)}
     b#{ - Inspect Things: i <ID> (ID of thing from "look")}
     b#{ - Get Things: get <ID> (ID of thing from "look")}
     b#{ - Drop Things: drop <ID> (ID of thing from "inventory")}
+    b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
 
 > Bar > Nat > (Nat, Bar)
 = (handleSingleCmd playerId cmd state)
@@ -564,7 +565,6 @@ b#{there is nothing here}
   [newState msg]
 [newState nullMsg]
 
-; TODO
 ; given a room id and an enumerated inventory id, drop up that item.
 > PlayerId > EnumID > RoomID > State > (State, Msg)
 = (dropItemId playerId enumeratedId roomId state)
@@ -578,16 +578,39 @@ b#{there is nothing here}
   [newState msg]
 [newState nullMsg]
 
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (inspectItem playerId enumeratedId roomId state)
+@ itemId | getItemIdFromEnumerated enumeratedId playerId state
+| trk [%itemId itemId]
+@ item | itemGet itemId state
+@ nullMsg | b#{that's not something to inspect}
+@ msg | barCat [b#{inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+| if itemId
+  [state msg]
+[state nullMsg]
+
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (adoreItem playerId enumeratedId state)
+@ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
+| trk [%itemId itemId]
+@ item | itemGet itemId state
+@ nullMsg | b#{that's not something to adore}
+@ msg | barCat [b#{adoring } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+| if itemId
+  [state msg]
+[state nullMsg]
+
 = (handleDuoCmd playerId cmd target state)
 | trk [%handlingDuo cmd target]
 @ trgNat | fromSome 0 (parseNat (idx 0 target))
-| if (eql cmd b#{i})
-  ; TODO:
-  [state (barCat [b#{you inspect } (barCat | trgNat)]) ]
 | if (eql cmd b#{get})
   | takeItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{drop})
   | dropItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{i})
+  | inspectItem playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{a})
+  | adoreItem playerId trgNat state
 | invalid state
 
 ; return [state msg]
