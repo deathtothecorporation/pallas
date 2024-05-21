@@ -62,16 +62,20 @@
        [b#desc b#{it looks dull}]
 ++  , 2
     | tabFromPairs
-    , [b#look (# b {another thing})]
-      [b#desc (# b {more more more})]
+    , [b#look (# b {a cheeseburger})]
+      [b#desc (# b {it has a bite taken out of it})]
 ++  , 3
     | tabFromPairs
-    , [b#look b#{yet another}]
-      [b#desc b#{even more}]
+    , [b#look b#{a large stone}]
+      [b#desc b#{there is some lichen on one side}]
 ++  , 4
     | tabFromPairs
-    , [b#look (# b {fourth thing})]
-      [b#desc (# b {more descrioption})]
+    , [b#look (# b {a ruby})]
+      [b#desc (# b {shiny})]
+++  , 5
+    | tabFromPairs
+    , [b#look (# b {the thing you've been looking for})]
+      [b#desc (# b {its not quite what you expected})]
 
 = itemLocations
 | tabFromPairs
@@ -81,7 +85,7 @@
       [b#playerId 0]
 ++  , 2
     | tabFromPairs
-    , [b#roomId 1]
+    , [b#roomId 2]
       [b#playerId 0]
 ++  , 3
     | tabFromPairs
@@ -90,6 +94,10 @@
 ++  , 4
     | tabFromPairs
     , [b#roomId 3]
+      [b#playerId 0]
+++  , 5
+    | tabFromPairs
+    , [b#roomId 6]
       [b#playerId 0]
 
 ; TODO: allow for defining rooms, items, etc. all state in a separate file
@@ -303,6 +311,17 @@ b#{#}
 = (lookItems items)
 | listToRow
 | listMap (x & (tabGet x b#look)) (tabValsList items)
+
+; Get an ID-prepended pairs list - for selecting by identifier
+> List > Pairs
+= (enumerateThings thingList)
+; start at 1
+@ ids | listMap inc | gen (len thingList) id
+| listZip ids thingList
+
+> List > Pairs
+= (lookItemsMsg items)
+| enumerateThings | listFromRow (lookItems items)
 
 ; TODO: Add IDs
 ; Add room description
