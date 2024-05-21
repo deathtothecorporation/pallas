@@ -5,9 +5,10 @@
 
 :| sire
 
-;172;
-;345;
-;060;
+;[ 8] [ 9] [13] [14];
+;[ 1] [ 7] [ 2] [10];
+;[ 3] [ 4] [ 5] [11];
+;[ 0] [ 6] [ 0] [12];
 
 ; TODO / IDEAS
 ; - [x] room descriptions
@@ -39,9 +40,10 @@
 
 
 = grid
-, [1 7 2]
-  [3 4 5]
-  [0 6 0]
+, [8 9 13 14]
+  [1 7 2 10]
+  [3 4 5 11]
+  [0 6 0 12]
 
 ; exits: [0 0 3 0]
 ;         n e s w
@@ -49,11 +51,11 @@
 | tabFromPairs
 ++  , 1 ; room ID
     | tabFromPairs
-    , [b#exits [0 7 3 0]]
+    , [b#exits [8 7 3 0]]
       [b#desc b#{it's damp and sticky}]
 ++  , 2
     | tabFromPairs
-    , [b#exits [0 0 5 7]]
+    , [b#exits [13 10 5 7]]
       [b#desc b#{the ceiling here is so high you can't see it}]
 ++  , 3
     | tabFromPairs
@@ -65,7 +67,7 @@
       [b#desc b#{}]
 ++  , 5
     | tabFromPairs
-    , [b#exits [2 0 0 4]]
+    , [b#exits [2 11 0 4]]
       [b#desc b#{}]
 ++  , 6
     | tabFromPairs
@@ -73,7 +75,35 @@
       [b#desc b#{}]
 ++  , 7
     | tabFromPairs
-    , [b#exits [0 2 4 1]]
+    , [b#exits [9 2 4 1]]
+      [b#desc b#{}]
+++  , 8
+    | tabFromPairs
+    , [b#exits [0 9 1 0]]
+      [b#desc b#{This is room 8}]
+++  , 9
+    | tabFromPairs
+    , [b#exits [0 13 2 8]]
+      [b#desc b#{}]
+++  , 10
+    | tabFromPairs
+    , [b#exits [14 0 11 2]]
+      [b#desc b#{}]
+++  , 11
+    | tabFromPairs
+    , [b#exits [10 0 12 5]]
+      [b#desc b#{}]
+++  , 12
+    | tabFromPairs
+    , [b#exits [11 0 0 0]]
+      [b#desc b#{}]
+++  , 13
+    | tabFromPairs
+    , [b#exits [0 14 2 9]]
+      [b#desc b#{}]
+++  , 14
+    | tabFromPairs
+    , [b#exits [0 0 10 13]]
       [b#desc b#{}]
 
 = (maxRow x)
@@ -319,10 +349,11 @@ newState
 b#{#}
 
 = (print playerId state message)
-@ top | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 0 3)
-@ mid | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 3 6)
-@ bot | barCat | map (roomId & printARoom playerId state roomId) (slice flatGrid 6 9)
-| barUnlines | intersperse barNewline [top mid bot "" message "" b#{> }]
+; @ rows | len grid
+; @ cols | len (idx 0 grid)
+@ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
+@ rowLines | barCat | intersperse barNewline gridRows
+| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
 =?= (dirIndex b{n})
   | 0
@@ -362,7 +393,7 @@ b#{#}
   @ s | tabIns b#players updPlayers gis
   | go 1 b{w} s
 
-=?= 1
+=?= 8
   @ players | (tabGet b#players gis)
   @ us | tabGet players 1
   @ usMoved | tabIns b#currentPosition 1 us
@@ -383,7 +414,7 @@ b#{#}
 =?= 0
   @ players | (tabGet b#players gis)
   @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 9 us
+  @ usMoved | tabIns b#currentPosition 99 us
   @ updPlayers | tabIns 1 usMoved players
   @ s | tabIns b#players updPlayers gis
   | go 1 b{n} s
