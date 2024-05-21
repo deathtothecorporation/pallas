@@ -9,6 +9,10 @@
 ;345;
 ;060;
 
+; TODO / IDEAS
+; - generate stuff in rooms from random tables
+;   - then add AI...
+
 = grid
 , [1 7 2]
   [3 4 5]
@@ -306,34 +310,44 @@ b#{#}
 | tabFromPairs
 | map (x & [x (tabGet (stateGet b#items state) x)]) itemIds
 
-; listMap (x & (tabGet x b#desc)) (tabValsList items)
 ; TODO: add general purpose "get all x val in map" function
-= (lookItems items)
+> Tab > Row
+= (tabGetValsOfKey t key)
 | listToRow
-| listMap (x & (tabGet x b#look)) (tabValsList items)
+| listMap (x & (tabGet x key)) (tabValsList t)
+
+; only get the 'look' of each item in an item map
+> Tab > Row
+= (itemLooks items)
+| tabGetValsOfKey items b#look
 
 ; Get an ID-prepended pairs list - for selecting by identifier
-> List > Pairs
+> List > Row Pairs
 = (enumerateThings thingList)
 ; start at 1
-@ ids | listMap inc | gen (len thingList) id
-| listZip ids thingList
+@ ids | map inc | gen (len | thingList) id
+| zip ids thingList
 
-> List > Pairs
-= (lookItemsMsg items)
-| enumerateThings | listFromRow (lookItems items)
+> List > Row Pairs
+= (itemLooksMsg items)
+; TODO:
+@ et | enumerateThings | listFromRow (itemLooks items)
+| trk [%lookitemmsg et]
+et
 
-; TODO: Add IDs
-; Add room description
+; TODO: Add room description
 = (lookMsg roomId state)
-@ itemIds | getItemIds roomId state
-@ items | filterItems itemIds state
-| trk [%itemIds itemIds]
-| trk [%items items]
-| trk [%look (lookItems items)]
-| trk [%len (len items)]
+@ itemIds | getItemIds roomId state ; row of ids
+@ items | filterItems itemIds state ; filtered map
+@ enumerated | enumerateThings | itemLooks items
+@ printableEnumerated | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumerated
+@ preamble |
+           , b#{you see:}
+             b#{}
+             b#{id   item}
+             b#{------------}
 | if (len itemIds)
-  | barCat | intersperse barNewline [b#{you see: } (barCat | intersperse barNewline (lookItems items))]
+  | barCat | intersperse barNewline (weld preamble printableEnumerated)
 b#{there is nothing here}
 
 = (helpMsg state)
