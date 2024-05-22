@@ -1,27 +1,12 @@
-#### demo_mud_2 <- prelude
-
-; stack run plunder save mud.seed sire/demo_mud_2.sire
-; stack run plunder repl mud.seed
+#### demo_cog_mud <- prelude
 
 :| sire
+:| kern
+:| json
+:| hitch
+:| stew
 
-;[ 8] [ 9] [13] [14];
-;[ 1] [ 7] [ 2] [10];
-;[ 3] [ 4] [ 5] [11];
-;[ 0] [ 6] [ 0] [12];
-
-; TODO / IDEAS
-; - [x] room descriptions
-; - [ ] manifest items
-; - [ ] allow for defining rooms, items, etc. all state in a separate file
-;       that gets ingested here.
-; - [ ] generate stuff in rooms from random tables
-;   - [ ] then add AI...
-; - [ ] doors that open and close
-; - [ ] seen/unseen rooms
-; - [ ] line of sight? (don't show things going on in rooms you can't see)
-; - [ ] sounds?
-; - [ ] range of sound (like line of sight)
+# typedef ContentType Bar
 
 > Bar > Maybe Nat
 = (parseNat bar)
@@ -235,7 +220,6 @@
 ; | stateGet b#itemLocations state
 
 ; general purpose "get all x val in map" function
-> Tab > Row
 = (tabGetValsOfKey t key)
 | listToRow
 | listMap (x & (tabGet x key)) (tabValsList t)
@@ -358,7 +342,9 @@ b#{#}
 ; @ cols | len (idx 0 grid)
 @ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
 @ rowLines | barCat | intersperse barNewline gridRows
-| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+@ result | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+| trk [%map result]
+result
 
 =?= (dirIndex b{n})
   | 0
@@ -471,17 +457,14 @@ b#{#}
 | map (x & [x (tabGet (stateGet b#players state) x)]) playerIds
 
 ; only get the 'look' of each item in an item map
-> Tab > Row
 = (itemLooks items)
 | tabGetValsOfKey items b#look
 
 ; only get the 'name' of each player in a player map
-> Tab > Row
 = (playerNames playersT)
 | tabGetValsOfKey playersT b#name
 
 ; Get an ID-prepended pairs list - for selecting by identifier
-> List > Row Pairs
 = (enumerateThings thingList)
 ; start at 1
 @ ids | map inc | gen (len | thingList) id
@@ -542,7 +525,6 @@ b#{your inventory is empty}
     b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
     b#{ - Impersonate: act <Player ID>}
 
-> Bar > Nat > (Nat, Bar)
 = (handleSingleCmd playerId cmd state)
 ; | trk [%handlingSingle]
 | if (has cmd [b#n b#e b#s b#w])
@@ -587,7 +569,6 @@ b#{your inventory is empty}
 =?= 1
   | getItemIdFromEnumerated 1 1 gis
 
-> PlayerId > EnumID > RoomID > State > (State, Msg)
 = (takeItemId playerId enumeratedId roomId state)
 @ itemId | getItemIdFromEnumerated enumeratedId roomId state
 ; | trk [%itemId itemId]
@@ -599,7 +580,6 @@ b#{your inventory is empty}
   [newState msg]
 [newState nullMsg]
 
-> PlayerId > EnumID > RoomID > State > (State, Msg)
 = (dropItemId playerId enumeratedId roomId state)
 @ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
 ; | trk [%itemId itemId]
@@ -611,7 +591,6 @@ b#{your inventory is empty}
   [newState msg]
 [newState nullMsg]
 
-> PlayerId > EnumID > RoomID > State > (State, Msg)
 = (inspectItem playerId enumeratedId roomId state)
 @ itemId | getItemIdFromEnumerated enumeratedId playerId state
 ; | trk [%itemId itemId]
@@ -622,7 +601,6 @@ b#{your inventory is empty}
   [state msg]
 [state nullMsg]
 
-> PlayerId > EnumID > RoomID > State > (State, Msg)
 = (adoreItem playerId enumeratedId state)
 @ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
 ; | trk [%itemId itemId]
@@ -649,7 +627,6 @@ b#{your inventory is empty}
 | invalid state
 
 ; return [state msg]
-> PlayerID > Input > State > (State, Message)
 = (commandDo input state)
 @ playerId | tabGet state b#actingId
 ; | trk [%cmdo input]
@@ -658,11 +635,161 @@ b#{your inventory is empty}
 * handleSingleCmd playerId (idx 0 cmd) state
 * handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
 
-= (tick state input)
-@ [changed msg] | commandDo input state
-; | trk [%changed changed]
-@ newState | changed
-@ playerId | tabGet newState b#actingId
-| (print playerId newState msg, tick newState)
+; = (tick state input)
+; @ [changed msg] | commandDo input state
+; ; | trk [%changed changed]
+; @ newState | changed
+; @ playerId | tabGet newState b#actingId
+; | (print playerId newState msg, tick newState)
 
-= main | tick gis
+> HMap Str (ContentType, Pin Bar)
+= startingFiles
+| hmSingleton
+* largeConfig
+* {/favicon.ico}
+* [b#{image/x-icon} x#{89504e}]
+
+# record CogState
+| COG_STATE
+* mudState   : Map
+* epoch      : Nat
+* files      : (HMap Str (ContentType, Pin Bar))
+* fileBytes  : Nat
+* servThread : ThreadId
+
+> ThreadId > CogState
+= (newCogState servThread)
+| COG_STATE
+* gis
+* 1
+* startingFiles
+* 0
+* servThread
+
+(emptyFileServer req)=NONE
+
+= (fileServer (PIN st) [method path headers (PIN body)])
+| trk [%xxxFileServer]
+| trk [%fileServerRequest method path headers body]
+| NONE
+;# switch method
+;* GET
+;  | trk [%beforefMap (barNat path) (hmKeys **getFiles st)]
+;  @ [type (PIN content)] | **fmapMaybe | hmLookup (barNat path) (**getFiles st)
+;  | trk [%type type %content content]
+;  @ head | [(b#{Content-Type}, type)]
+;  | trk [%beforeIf content]
+;  | if (neq content 0)
+;    | trk [%afterIf content]
+;    [200 b#gotcha head content]
+;  | trk [%else content]
+;  [404 b#notFound [] b#{}]
+;* _ | NONE
+
+= (modifyState vSt fun return)
+: (PIN old) < readRef vSt
+@ srv       | **getServThread old
+@ pNew      | PIN (fun old)
+: _         < writeRef vSt pNew
+: _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
+| return ()
+
+(bindMaybe mVal k)=(maybeCase mVal NONE k)
+
+> Bar > Maybe (Tab Str Json)
+= (jsonMap jsonBS)
+@ res@[json leftover] (parseJson jsonBS)
+| if (res || leftover) NONE
+# datacase json
+* JMAP|m | SOME m
+* _      | NONE
+
+= (asJsonStr m)
+# datacase m
+* JSTR|s | SOME s
+* _      | NONE
+
+= (parseCommandJson jsonBS)
+: map < **bindMaybe (jsonMap jsonBS)
+: cmd < **bindMaybe (tabLookup %cmd map)
+: cmS < **bindMaybe (asJsonStr cmd)
+cmS
+
+= (handleReq vSt request return)
+@ [rid method path headers pBody@(PIN body)] request
+| trk [%handleReq request]
+# switch method
+* GET
+  # switch path
+  * b#{/world}
+    : (PIN st) < readRef vSt
+    | trk [%print (print 1 (getMudState st) [])] ; TODO: player ID
+    : _ < fork (syscall (**HTTP_ECHO rid 200 [] b#{}))
+    | return ()
+  * _
+    : _ < fork (syscall (**HTTP_ECHO rid 400 [] b#{}))
+    | return ()
+  : _ < fork (syscall (**HTTP_ECHO rid 400 [] b#{}))
+  | return ()
+* POST
+  # switch path
+  * b#{/cmd}
+    : (PIN st) < readRef vSt
+    @ gameState | getMudState st
+    | trk [%body body]
+    @ input | parseCommandJson body
+    @ [changed msg] | commandDo input gameState
+    : _ < modifyState vSt & st
+                          | setMudState | changed
+                          | st
+    | trk [%print (print 1 changed msg)] ; TODO: player ID
+    ; take a command, update the state, respond with print
+    : _ < fork (syscall (**HTTP_ECHO rid 200 [] b#{hello}))
+    | return ()
+  * _
+    : _ < fork (syscall (**HTTP_ECHO rid 400 [] b#{}))
+    | return ()
+* _
+  | trk [%gotUnknown method]
+  : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
+  | return ()
+
+
+= (runHttpServer vSt return)
+: ??(rhs_heard req) < syscall HTTP_HEAR
+: _                 < handleReq vSt req
+| runHttpServer vSt return
+
+= (tick vSt return)
+: (PIN pinState) < readRef vSt
+@ epoch | getEpoch pinState
+; | trk [%pinState pinState]
+; | trk {tick},epoch,return
+; | trk [%epoch epoch]
+: ??(td_got_time now) < syscall TIME_WHEN
+; | trk [current_time=now]
+: ??(td_waited _) < syscall (**TIME_WAIT | inc now)
+; TODO: need to do all the in-game state editing
+; @ newState | pinState
+; @ input | b#{s\n} ; TODO: fake.
+; @ [changed msg] | commandDo input newState
+; @ newState | changed
+; @ playerId | tabGet changed b#actingId
+; | (print playerId newState msg, tick newState return)
+;
+; : _ < modifyState vSt | setEpoch | inc epoch
+;
+: _ < modifyState vSt & pinState
+                      | setEpoch | inc epoch
+                      | pinState
+| tick vSt return
+
+= (spinMud return)
+: servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
+: vSt         < newRef (PIN | newCogState servThread)
+: timerThread < fork (tick vSt)
+: httpThread1 < fork (runHttpServer vSt)
+: httpThread2 < fork (runHttpServer vSt)
+| return ()
+
+main=(runCog spinMud)
