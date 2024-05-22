@@ -180,6 +180,7 @@
   [b#inventory []]
   [b#itemLocations itemLocations]
   [b#players playersT]
+  [b#actingId 1]
 
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
@@ -222,6 +223,10 @@
 
 = (curRoom playerId state)
 | tabGet (stateGet b#roomT state) (curPos playerId state)
+
+= (actingPlayerSet playerId state)
+@ newState | tabIns b#actingId playerId state
+[newState b#{}]
 
 ; = (getPlayerIds roomId state)
 ; | filter neq-0
@@ -535,6 +540,7 @@ b#{your inventory is empty}
     b#{ - Get Things: get <ID> (ID of thing from "look")}
     b#{ - Drop Things: drop <ID> (ID of thing from "inventory")}
     b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
+    b#{ - Impersonate: act <Player ID>}
 
 > Bar > Nat > (Nat, Bar)
 = (handleSingleCmd playerId cmd state)
@@ -632,6 +638,8 @@ b#{your inventory is empty}
 = (handleDuoCmd playerId cmd target state)
 | trk [%handlingDuo cmd target]
 @ trgNat | fromSome 0 (parseNat (idx 0 target))
+| if (eql cmd b#{act})
+  | actingPlayerSet trgNat state
 | if (eql cmd b#{get})
   | takeItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{drop})
@@ -644,8 +652,10 @@ b#{your inventory is empty}
 
 ; return [state msg]
 > PlayerID > Input > State > (State, Message)
-= (commandDo playerId input state)
-| trk [%cmdo playerId input]
+= (commandDo input state)
+; get "current player" from state?
+@ playerId | tabGet state b#actingId
+| trk [%cmdo input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input ; when seeding
 | if (eql 1 | len cmd)
 * handleSingleCmd playerId (idx 0 cmd) state
@@ -660,11 +670,12 @@ b#{your inventory is empty}
 ; come into play when we're HTTPing.
 ; right now, the UI **IS** the game state, which is making adding "multiplayer"
 ; confusing.
-= (tick playerId state input)
-@ [changed msg] | commandDo playerId input state
+= (tick state input)
+@ [changed msg] | commandDo input state
 | trk [%changed changed]
 @ newState | changed
-| (print playerId newState msg, tick playerId newState)
+@ playerId | tabGet newState b#actingId
+| (print playerId newState msg, tick newState)
 
 ; print 2 0 (barUnlines b{welcome. for help, type h<enter>})
-= main | tick 1 gis
+= main | tick gis
