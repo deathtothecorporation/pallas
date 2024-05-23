@@ -1,5 +1,26 @@
 #### demo_cog_mud <- prelude
 
+;[ 8] [ 9] [13] [14];
+;[ 1] [ 7] [ 2] [10];
+;[ 3] [ 4] [ 5] [11];
+;[ 0] [ 6] [ 0] [12];
+
+; TODO / IDEAS
+; - [x] room descriptions
+; - [ ] chat (local, no history)
+; - [ ] discuss (fora, many connected rooms, with log)
+; - [ ] yell (all rooms, with log)
+; - [ ] manifest items
+; - [ ] allow for defining rooms, items, etc. all state in a separate file
+;       that gets ingested here.
+; - [ ] generate stuff in rooms from random tables
+;   - [ ] then add AI...
+; - [ ] doors that open and close
+; - [ ] seen/unseen rooms
+; - [ ] line of sight? (don't show things going on in rooms you can't see)
+; - [ ] sounds?
+; - [ ] range of sound (like line of sight)
+
 :| sire
 :| prelude
 :| kern
@@ -694,6 +715,10 @@ b#{your inventory is empty}
 
 = (fileServer (PIN st) [method path headers (PIN body)])
 | trk [%fileServerRequest method path headers body]
+;@ originHeader | **fromSome b#{localhost}
+;               | tabLookup b#{origin}
+;               | tabFromPairs headers
+;@ head | dynamicCors originHeader
 # switch method
 * _ | NONE
 * GET
@@ -741,19 +766,38 @@ b#{your inventory is empty}
 : who < **bindMaybe (tabLookup %who map)
 who
 
+= (dynamicCors origin)
+[(b#{Access-Control-Allow-Origin}, origin) (b#{Content-Type}, b#{application/json}) (b#{Access-Control-Allow-Credentials}, b#{true}) (b#{Access-Control-Allow-Headers}, b#{Content-Type, Authorization}) (b#{Access-Control-Allow-Methods}, b#{POST, GET, PUT, OPTIONS})]
+
+= (buildJson st)
+@ COG_STATE(..) st
+| JMAP
+## =who | JVEC (tabGet (getMudState st) b#players) ; row-in-row for some reason
+
 = (handleReq vSt request return)
 @ [rid method path headers pBody@(PIN body)] request
 | trk [%handleReq request]
+@ originHeader | **fromSome b#{localhost}
+               | tabLookup b#{origin}
+               | tabFromPairs headers
+@ head | dynamicCors originHeader
 # switch method
 * GET
   # switch path
   * b#{/world}
     : (PIN st) < readRef vSt
     | trk [%print (print 1 (getMudState st) [])] ; TODO: player ID
-    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [] b#{}))
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head b#{}))
+    | return ()
+  * b#{/who}
+    : (PIN st) < readRef vSt
+    ; TODO: fix json:
+    @ whoJson   | **buildJson st
+    @ whoJsonBS | printJson whoJson
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head whoJsonBS))
     | return ()
   * _
-    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))
     | return ()
 * POST
   # switch path
@@ -771,10 +815,10 @@ who
     | trk [%print (print playerId changed msg)]
     @ worldBytes (print playerId changed msg)
     ; take a command, update the state, respond with print
-    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [] worldBytes))
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
     | return ()
   * _
-    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))
     | return ()
 * PUT
   : (PIN st) < readRef vSt
@@ -787,6 +831,9 @@ who
   : _ < modifyState vSt & st
                         | setFiles files
                         | st
+  | return ()
+* OPTIONS
+  : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head b#{}))
   | return ()
 * _
   | trk [%gotUnknown method]
