@@ -771,8 +771,18 @@ who
 
 = (buildJson st)
 @ COG_STATE(..) st
-| JMAP
-## =who | JVEC (tabGet (getMudState st) b#players) ; row-in-row for some reason
+| trk [%mudState (getMudState st)]
+| trk [%tabGet (tabGet (getMudState st) b#players)]
+@ playerIds | tabKeysRow (tabGet (getMudState st) b#players)
+@ players | tabToPairs | (tabGet (getMudState st) b#players)
+@ jval
+  | JVEC
+  : [playerId playerData] < foreach players
+  | JMAP
+  ## =playerId (JSTR | natBar | showNat playerId)
+  ## =playerData
+    | JMAP #[name=(tabGet playerData b#name)]
+jval
 
 = (handleReq vSt request return)
 @ [rid method path headers pBody@(PIN body)] request
@@ -783,16 +793,23 @@ who
 @ head | dynamicCors originHeader
 # switch method
 * GET
+  @ pathWithQuery | path
+  @ path | barTakeWhile (neq {?}) pathWithQuery
   # switch path
   * b#{/world}
+    ; will be used for polling
+    ; TODO: needs to be parameterized for who is asking
     : (PIN st) < readRef vSt
-    | trk [%print (print 1 (getMudState st) [])] ; TODO: player ID
-    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head b#{}))
+    @ playerId | fromSome 1 | parseWhoJson body
+    @ gameState | getMudState st
+    @ worldBytes (print playerId gameState [])
+    | trk [%print (print playerId (getMudState st) [])] ; TODO: player ID
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
     | return ()
   * b#{/who}
     : (PIN st) < readRef vSt
     ; TODO: fix json:
-    @ whoJson   | **buildJson st
+    @ whoJson   | buildJson st
     @ whoJsonBS | printJson whoJson
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head whoJsonBS))
     | return ()
@@ -806,7 +823,9 @@ who
     @ gameState | getMudState st
     | trk [%body body]
     @ input    | parseCommandJson body
-    @ playerId | fromSome 1 (parseNat | parseWhoJson body)
+    ; TODO: not working
+    ; @ playerId | fromSome 1 (parseNat | parseWhoJson body)
+    @ playerId | fromSome 1 | parseWhoJson body
     | trk [%playerId playerId]
     @ [changed msg] | commandDo playerId input gameState
     : _ < modifyState vSt & st
