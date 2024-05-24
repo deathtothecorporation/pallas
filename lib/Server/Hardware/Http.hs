@@ -156,6 +156,7 @@ type List a = [a]
 data StaticRequest = STAT_REQ
     { method  :: Nat
     , path    :: Bar
+    , query   :: Bar
     , headers :: Vector (Bar, Bar)
     , body    :: Bar
     }
@@ -171,6 +172,7 @@ data DynamicRequest = DYN_REQ
     { reqId   :: Nat
     , method  :: Nat
     , path    :: Bar
+    , query   :: Bar
     , headers :: Vector (Bar, Bar)
     , body    :: Pin
     }
@@ -193,7 +195,7 @@ data Req
 --------------------------------------------------------------------------------
 
 instance ToNoun StaticRequest where
-    toNoun r = toNoun (r.method, r.path, r.headers, mkPin $ BAR $ r.body)
+    toNoun r = toNoun (r.method, r.path, r.query, r.headers, mkPin $ BAR $ r.body)
 
 instance FromNoun StaticResponse where
     fromNoun n = do
@@ -201,7 +203,7 @@ instance FromNoun StaticResponse where
       pure STAT_RESP{..}
 
 instance ToNoun DynamicRequest where
-    toNoun r = toNoun (r.reqId, r.method, r.path, r.headers, r.body)
+    toNoun r = toNoun (r.reqId, r.method, r.path, r.query, r.headers, r.body)
 
 decodeHttpRequest :: Vector Fan -> Maybe Req
 decodeHttpRequest top = (dec . toList) top
@@ -405,8 +407,14 @@ servThread lmdbStore wsApp cog = do
 
                   servResponse <-
                     withSimpleTracingEvent "run" "http" $ do
+                      staticReq <- staticRequestFromWai req body
                       evaluate $ fromNoun @(Maybe StaticResponse) $
-                                 serv %% toNoun (staticRequestFromWai req body)
+                                 serv %% toNoun staticReq
+
+                  --servResponse <-
+                    --withSimpleTracingEvent "run" "http" $ do
+                      --evaluate $ fromNoun @(Maybe StaticResponse) $
+                                 --serv %% toNoun (staticRequestFromWai req body)
 
                   (waiResponse, flows) <- do
                     case servResponse of
@@ -418,10 +426,14 @@ servThread lmdbStore wsApp cog = do
   where
     badStaticResponse = W.responseLBS W.status500 [] "Bad response from SERV"
 
-    staticRequestFromWai :: W.Request -> ByteString -> StaticRequest
-    staticRequestFromWai req body = STAT_REQ
-        { method  = bytesNat (req.requestMethod)
-        , path    = req.rawPathInfo
+    staticRequestFromWai :: Debug => W.Request -> ByteString -> IO StaticRequest
+    staticRequestFromWai req body = do
+      debugVal "_http_path" (encodeUtf8 (pack (show (req.rawPathInfo))) :: Bar)
+      debugVal "_http_query" (encodeUtf8 (pack (show (req.rawQueryString))) :: Bar)
+      return STAT_REQ
+        { method = bytesNat (req.requestMethod)
+        , path = req.rawPathInfo
+        , query = req.rawQueryString
         , headers = V.fromList req.requestHeaders <&>
                        over _1 CI.foldedCase
         , body    = body
@@ -459,6 +471,7 @@ servThread lmdbStore wsApp cog = do
                     { reqId   = fromIntegral key
                     , method  = bytesNat (req.requestMethod)
                     , path    = req.rawPathInfo
+                    , query   = req.rawQueryString
                     , headers = reqHed
                     , body    = bodyPin
                     }

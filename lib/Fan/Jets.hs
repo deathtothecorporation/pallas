@@ -119,8 +119,8 @@ jetMatch cpin = do
                  IGNORE -> cpin.exec
                  CRASH  -> \e -> throw (PRIMOP_CRASH "deopt" (envRow e))
                  WARN   -> \e -> unsafePerformIO do
-                                       -- shw <- readIORef vShowFan
-                                       hPutStrLn stderr ("")
+                                       shw <- readIORef vShowFan
+                                       hPutStrLn stderr ("deopt:" <> shw (envRow e))
                                        pure (cpin.exec e)
 
     let pHash      = cpin.hash
@@ -140,8 +140,8 @@ jetMatch cpin = do
         Nothing -> (when jetLike do notMatched) $> cpin
         Just (jetHash, exe) -> do
             if jetHash == pHash then do
-                -- hPutStrLn stderr (pad20 pinName "MATCHED")
-                -- dumpHashLine pinName hashText
+                hPutStrLn stderr (pad20 pinName "MATCHED")
+                dumpHashLine pinName hashText
                 pure case exe of
                          Nothing -> cpin
                          Just ex -> setExec (\env -> ex fallback env) cpin

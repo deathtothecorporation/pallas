@@ -177,6 +177,24 @@
       [b#name b#{Chase}]
       [b#currentPosition 5]
       [b#hp 10]
+++  , 3
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Dan}]
+      [b#currentPosition 2]
+      [b#hp 10]
+++  , 4
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Jack}]
+      [b#currentPosition 4]
+      [b#hp 10]
+++  , 5
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Demon}]
+      [b#currentPosition 8]
+      [b#hp 10]
 
 ; generateInitialState
 = (gis)
@@ -366,7 +384,6 @@ b#{#}
 @ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
 @ rowLines | barCat | intersperse barNewline gridRows
 @ result | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
-| trk [%map result]
 result
 
 =?= (dirIndex b{n})
@@ -713,8 +730,8 @@ b#{your inventory is empty}
 
 (emptyFileServer req)=NONE
 
-= (fileServer (PIN st) [method path headers (PIN body)])
-| trk [%fileServerRequest method path headers body]
+= (fileServer (PIN st) [method path query headers (PIN body)])
+| trk [%fileServerRequest method path query headers body]
 ;@ originHeader | **fromSome b#{localhost}
 ;               | tabLookup b#{origin}
 ;               | tabFromPairs headers
@@ -785,8 +802,10 @@ who
 jval
 
 = (handleReq vSt request return)
-@ [rid method path headers pBody@(PIN body)] request
+@ [rid method path query headers pBody@(PIN body)] request
 | trk [%handleReq request]
+| trk [%handlePath path]
+| trk [%handleQiery query]
 @ originHeader | **fromSome b#{localhost}
                | tabLookup b#{origin}
                | tabFromPairs headers
@@ -794,16 +813,23 @@ jval
 # switch method
 * GET
   @ pathWithQuery | path
+  | trk [%pathwithq pathWithQuery]
+  | trk [%path path]
   @ path | barTakeWhile (neq {?}) pathWithQuery
+  @ quer | idx 1 | listToRow | barSplit {?} query
   # switch path
   * b#{/world}
     ; will be used for polling
     ; TODO: needs to be parameterized for who is asking
     : (PIN st) < readRef vSt
-    @ playerId | fromSome 1 | parseWhoJson body
+    | trk [%pathq pathWithQuery]
+    | trk [%quer quer]
+    @ queryMap | tabFromPairs | map (x & (listToRow | barSplit {=} x)) (listToRow | barSplit {&} quer)
+    | trk [%queryMap queryMap]
+    @ playerId | fromSome 1 (parseNat (tabGet queryMap b#who))
+    | trk [%playerId playerId]
     @ gameState | getMudState st
     @ worldBytes (print playerId gameState [])
-    | trk [%print (print playerId (getMudState st) [])] ; TODO: player ID
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
     | return ()
   * b#{/who}
@@ -831,7 +857,6 @@ jval
     : _ < modifyState vSt & st
                           | setMudState | changed
                           | st
-    | trk [%print (print playerId changed msg)]
     @ worldBytes (print playerId changed msg)
     ; take a command, update the state, respond with print
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
