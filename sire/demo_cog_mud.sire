@@ -7,12 +7,20 @@
 
 ; TODO / IDEAS
 ; - [x] room descriptions
+; - [x] yell (all rooms, with log)
+; - [ ] whisper (DMs. encrypted with key out of band?)
+; - [ ] manifest items
+; - [ ] larger map
+; - [ ] running game log
+; - [ ] private log
 ; - [ ] chat (local, no history)
 ; - [ ] discuss (fora, many connected rooms, with log)
-; - [ ] yell (all rooms, with log)
-; - [ ] manifest items
 ; - [ ] allow for defining rooms, items, etc. all state in a separate file
 ;       that gets ingested here.
+; - [ ] weilding
+; - [ ] combat
+; - [ ] using items on things
+; - [ ] up/down levels
 ; - [ ] generate stuff in rooms from random tables
 ;   - [ ] then add AI...
 ; - [ ] doors that open and close
@@ -196,6 +204,8 @@
       [b#currentPosition 8]
       [b#hp 10]
 
+= yell | []
+
 ; generateInitialState
 = (gis)
 | tabFromPairs
@@ -207,6 +217,8 @@
   [b#itemLocations itemLocations]
   [b#players playersT]
   [b#actingId 1]
+  [b#yell yell]
+  [b#log 0] ; TODO:
 
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
@@ -557,6 +569,7 @@ b#{your inventory is empty}
     b#{}
     b#{ - Help: h (this command)}
     b#{ - Moving: n e s w (to move north, east, south, west)}
+    b#{ - Yell (global chat): y <thing you want to say>}
     b#{ - Inventory: i (will return a list of things with ids for further interaction)}
     b#{ - Look Around: l (will return a list of things with ids for further interaction)}
     b#{ - Inspect Things: i <ID> (ID of thing from "look")}
@@ -633,7 +646,6 @@ b#{your inventory is empty}
 
 = (inspectItem playerId enumeratedId roomId state)
 @ itemId | getItemIdFromEnumerated enumeratedId playerId state
-; | trk [%itemId itemId]
 @ item | itemGet itemId state
 @ nullMsg | b#{** that's not something to inspect **}
 @ msg | barCat [b#{** inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
@@ -651,13 +663,29 @@ b#{your inventory is empty}
   [state msg]
 [state nullMsg]
 
+= (playerYell playerId comment state)
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+@ oldYell | tabGet state b#yell
+@ newYell | weld oldYell [[name comment]]
+| trk [%xoldState state]
+| trk [%xnewState (tabIns b#yell newYell state)]
+@ newState | tabIns b#yell newYell state
+[newState (barCat [b#{** } name b#{ said: "} comment b#{"}])]
+
 = (handleDuoCmd playerId cmd target state)
-; | trk [%handlingDuo cmd target]
+; target will be a list of remainder without command
+| trk [%handlingDuo cmd target]
 @ trgNat | fromSome 0 (parseNat (idx 0 target))
 | if (eql cmd b#{act})
   | actingPlayerSet trgNat state
 | if (eql cmd b#{get})
   | takeItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{y})
+  @ comment | barCat
+            | intersperse b#{ } | target
+  | playerYell playerId comment state
 | if (eql cmd b#{drop})
   | dropItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{i})
@@ -786,7 +814,7 @@ who
 = (dynamicCors origin)
 [(b#{Access-Control-Allow-Origin}, origin) (b#{Content-Type}, b#{application/json}) (b#{Access-Control-Allow-Credentials}, b#{true}) (b#{Access-Control-Allow-Headers}, b#{Content-Type, Authorization}) (b#{Access-Control-Allow-Methods}, b#{POST, GET, PUT, OPTIONS})]
 
-= (buildJson st)
+= (buildWhoJson st)
 @ COG_STATE(..) st
 | trk [%mudState (getMudState st)]
 | trk [%tabGet (tabGet (getMudState st) b#players)]
@@ -799,6 +827,17 @@ who
   ## =playerId (JSTR | natBar | showNat playerId)
   ## =playerData
     | JMAP #[name=(tabGet playerData b#name)]
+jval
+
+= (buildYellJson st)
+@ COG_STATE(..) st
+@ yells | tabGet (getMudState st) b#yell
+@ jval
+  | JVEC
+  : [name comment] < foreach yells
+  | JMAP
+  ## =name (JSTR | name)
+  ## =comment (JSTR | comment)
 jval
 
 = (handleReq vSt request return)
@@ -829,15 +868,27 @@ jval
     @ playerId | fromSome 1 (parseNat (tabGet queryMap b#who))
     | trk [%playerId playerId]
     @ gameState | getMudState st
-    @ worldBytes (print playerId gameState [])
+    @ playerRoom | curPos playerId gameState
+    | trk [%curPos playerRoom]
+    ; @ worldBytes (print playerId gameState [])
+    ; @ worldBytes | handleSingleCmd playerId b#{l} gameState
+    @ [changed msg] | commandDo playerId b#{l} gameState
+    @ worldBytes (print playerId changed msg)
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
     | return ()
   * b#{/who}
     : (PIN st) < readRef vSt
     ; TODO: fix json:
-    @ whoJson   | buildJson st
+    @ whoJson   | buildWhoJson st
     @ whoJsonBS | printJson whoJson
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head whoJsonBS))
+    | return ()
+  * b#{/yell}
+    : (PIN st) < readRef vSt
+    ; TODO: fix json:
+    @ yellJson   | buildYellJson st
+    @ yellJsonBS | printJson yellJson
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head yellJsonBS))
     | return ()
   * _
     : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))

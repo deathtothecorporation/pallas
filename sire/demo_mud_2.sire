@@ -170,6 +170,8 @@
       [b#currentPosition 5]
       [b#hp 10]
 
+= yell | []
+
 ; generateInitialState
 = (gis)
 | tabFromPairs
@@ -181,6 +183,7 @@
   [b#itemLocations itemLocations]
   [b#players playersT]
   [b#actingId 1]
+  [b#yell yell]
 
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
@@ -633,13 +636,31 @@ b#{your inventory is empty}
   [state msg]
 [state nullMsg]
 
+= (playerYell playerId comment state)
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+@ oldYell | tabGet state b#yell
+@ newYell | weld oldYell [[name comment]]
+| trk [%xoldState state]
+| trk [%xnewState (tabIns b#yell newYell state)]
+@ newState | tabIns b#yell newYell state
+[newState (barCat [b#{** } name b#{ said } comment])]
+
 = (handleDuoCmd playerId cmd target state)
-; | trk [%handlingDuo cmd target]
+; target will be a list of remainder without command
+| trk [%handlingDuo cmd target]
 @ trgNat | fromSome 0 (parseNat (idx 0 target))
 | if (eql cmd b#{act})
   | actingPlayerSet trgNat state
 | if (eql cmd b#{get})
   | takeItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{y})
+  | trk [%target target]
+  @ comment | barCat
+            | intersperse b#{ } | target
+  | trk [%comment comment]
+  | playerYell playerId comment state
 | if (eql cmd b#{drop})
   | dropItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{i})
