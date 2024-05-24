@@ -10,6 +10,7 @@
 ; - [x] yell (all rooms, with log)
 ; - [ ] whisper (DMs. encrypted with key out of band?)
 ; - [ ] manifest items
+; - [ ] create players
 ; - [ ] larger map
 ; - [ ] running game log
 ; - [ ] private log
@@ -576,7 +577,7 @@ b#{your inventory is empty}
     b#{ - Get Things: get <ID> (ID of thing from "look")}
     b#{ - Drop Things: drop <ID> (ID of thing from "inventory")}
     b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
-    b#{ - Impersonate: act <Player ID>}
+    b#{ - Create Items: make <name> * <longer description> (the space around "*" is important)}
 
 = (handleSingleCmd playerId cmd state)
 ; | trk [%handlingSingle]
@@ -645,7 +646,7 @@ b#{your inventory is empty}
 [newState nullMsg]
 
 = (inspectItem playerId enumeratedId roomId state)
-@ itemId | getItemIdFromEnumerated enumeratedId playerId state
+@ itemId | getItemIdFromEnumerated enumeratedId roomId state
 @ item | itemGet itemId state
 @ nullMsg | b#{** that's not something to inspect **}
 @ msg | barCat [b#{** inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
@@ -674,6 +675,24 @@ b#{your inventory is empty}
 @ newState | tabIns b#yell newYell state
 [newState (barCat [b#{** } name b#{ said: "} comment b#{"}])]
 
+= (createItem playerId cmdRow state)
+; cmdRow will be a row of all space-separated entry (without "make")
+@ look | barCat | intersperse b#{ } | listToRow | listTakeWhile (neq b#{*}) | listFromRow cmdRow
+@ desc | barCat | intersperse b#{ } | drop 1 | listToRow | listDropWhile (neq b#{*}) | listFromRow cmdRow
+@ nextItemId | inc | last | tabKeysRow items
+@ newItem | tabFromPairs [[b#look look] [b#desc desc]]
+@ oldItems | tabGet state b#items
+@ newItems | tabIns nextItemId newItem oldItems
+@ newState | tabIns b#items newItems state
+@ oldLocations | tabGet state b#itemLocations
+@ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+@ newLocations | tabIns nextItemId newItemLoc oldLocations
+@ newState | tabIns b#itemLocations newLocations newState
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+[newState (barCat [b#{** } name b#{ created: } look])]
+
 = (handleDuoCmd playerId cmd target state)
 ; target will be a list of remainder without command
 | trk [%handlingDuo cmd target]
@@ -690,15 +709,18 @@ b#{your inventory is empty}
   | dropItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{i})
   | inspectItem playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{make})
+  | createItem playerId target state
 | if (eql cmd b#{a})
   | adoreItem playerId trgNat state
 | invalid state
 
 ; return [state msg]
 = (commandDo playerId input state)
-; @ playerId | tabGet state b#actingId
-; | trk [%cmdo input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input
+; TODO: this doesn't need to work this way. we should always just start
+; at the first chunk and see what else (if any) we need to process and how,
+; rather than having "single" and "duo" handlers.
 | if (eql 1 | len cmd)
 * handleSingleCmd playerId (idx 0 cmd) state
 * handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
