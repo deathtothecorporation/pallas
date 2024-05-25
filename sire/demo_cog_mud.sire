@@ -879,6 +879,11 @@ jval
   @ path | barTakeWhile (neq {?}) pathWithQuery
   @ quer | idx 1 | listToRow | barSplit {?} query
   # switch path
+  * b#{/seed}
+    : (PIN st) < readRef vSt
+    @ seedBS | _SaveSeed (getMudState st)
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head seedBS))
+    | return ()
   * b#{/world}
     ; will be used for polling
     ; TODO: needs to be parameterized for who is asking
@@ -933,6 +938,13 @@ jval
     @ worldBytes (print playerId changed msg)
     ; take a command, update the state, respond with print
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
+    | return ()
+  * b#{/seed}
+    | trk [%posted body]
+    @ seed | barSlice 145 9999 body ; 145? 
+    @ s | _LoadSeed seed
+    | trk [%seed s]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head b#{got}))
     | return ()
   * _
     : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))
