@@ -9,7 +9,8 @@
 ; - [x] room descriptions
 ; - [x] yell (all rooms, with log)
 ; - [ ] whisper (DMs. encrypted with key out of band?)
-; - [ ] manifest items
+; - [x] manifest items
+;   - [ ] add manifester to items
 ; - [ ] create players
 ; - [ ] larger map
 ; - [ ] running game log
@@ -55,6 +56,10 @@
 @ !acc (add (mul 10 acc) (sub c {0}))
 | go acc inc-ix
 
+= (getOffset needle haystack)
+@ start (idx 0 (barSubstringSearch needle haystack))
+@ width (barLen needle)
+(add start width)
 
 = grid
 , [8 9 13 14]
@@ -679,9 +684,9 @@ b#{your inventory is empty}
 ; cmdRow will be a row of all space-separated entry (without "make")
 @ look | barCat | intersperse b#{ } | listToRow | listTakeWhile (neq b#{*}) | listFromRow cmdRow
 @ desc | barCat | intersperse b#{ } | drop 1 | listToRow | listDropWhile (neq b#{*}) | listFromRow cmdRow
-@ nextItemId | inc | last | tabKeysRow items
-@ newItem | tabFromPairs [[b#look look] [b#desc desc]]
 @ oldItems | tabGet state b#items
+@ nextItemId | inc | last | tabKeysRow oldItems
+@ newItem | tabFromPairs [[b#look look] [b#desc desc]]
 @ newItems | tabIns nextItemId newItem oldItems
 @ newState | tabIns b#items newItems state
 @ oldLocations | tabGet state b#itemLocations
@@ -941,8 +946,17 @@ jval
     | return ()
   * b#{/seed}
     | trk [%posted body]
-    @ seed | barSlice 145 9999 body ; 145? 
+    @ delimiter | x#0d0a0d0a ; this is the \r\n\r\n between form-data headers and body
+    | trk [%delimiter delimiter]
+    @ offset | getOffset delimiter body
+    | trk [%offset offset]
+    @ seed | barDrop offset body
+    | trk [%seedBody seed]
     @ s | _LoadSeed seed
+    @ restoredState | s
+    : _ < modifyState vSt & st
+                          | setMudState | restoredState
+                          | st
     | trk [%seed s]
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head b#{got}))
     | return ()

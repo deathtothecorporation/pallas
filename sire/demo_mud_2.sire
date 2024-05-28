@@ -653,10 +653,10 @@ b#{your inventory is empty}
 @ desc | barCat | intersperse b#{ } | drop 1 | listToRow | listDropWhile (neq b#{*}) | listFromRow cmdRow
 | trk [%xxxdesc desc]
 | trk [%xxxcmdRow cmdRow]
-@ nextItemId | inc | last | tabKeysRow items
+@ oldItems | tabGet state b#items
+@ nextItemId | inc | last | tabKeysRow oldItems
 @ newItem | tabFromPairs [[b#look look] [b#desc desc]]
 | trk [%new newItem]
-@ oldItems | tabGet state b#items
 @ newItems | tabIns nextItemId newItem oldItems
 | trk [%newItemState newItems]
 @ newState | tabIns b#items newItems state
