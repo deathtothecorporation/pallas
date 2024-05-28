@@ -153,6 +153,12 @@
     | tabFromPairs
     , [b#look (# b {the thing you've been looking for})]
       [b#desc (# b {its not quite what you expected})]
+++  , 6
+    | tabFromPairs
+    , [b#look (# b {an image})]
+      [b#desc (# b {it has a picture})]
+      [b#fileBytes x#89504e470d0a1a0a0000000d4948445200000008000000050802000000f7f33a020000004f49444154089963d4d031616060e017d35924ffa5e4f4fd4d97cf303232feffff9f89010760596767f7fdcbab35ef18d125ca0fedfdc6a75aa227c1f2f333b204d3cd7fcc8fdfdd9ef7ece77f541d0061981d70d58532b50000000049454e44ae426082]
+      [b#fileMime  b#{image/png}]
 
 = itemLocations
 | tabFromPairs
@@ -175,6 +181,10 @@
 ++  , 5
     | tabFromPairs
     , [b#roomId 6]
+      [b#playerId 0]
+++  , 6
+    | tabFromPairs
+    , [b#roomId 1]
       [b#playerId 0]
 
 = playersT
@@ -654,6 +664,7 @@ b#{your inventory is empty}
 @ itemId | getItemIdFromEnumerated enumeratedId roomId state
 @ item | itemGet itemId state
 @ nullMsg | b#{** that's not something to inspect **}
+| trk [%fileBytes (tabGet item b#fileBytes)]
 @ msg | barCat [b#{** inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
 | if itemId
   [state msg]
@@ -697,6 +708,21 @@ b#{your inventory is empty}
 @ player | tabGet players playerId
 @ name | tabGet player b#name
 [newState (barCat [b#{** } name b#{ created: } look])]
+
+= (createFileItem playerId look desc fileBytes fileMime state)
+@ oldItems | tabGet state b#items
+@ nextItemId | inc | last | tabKeysRow oldItems
+@ newItem | tabFromPairs [[b#look look] [b#desc desc] [b#fileBytes fileBytes] [b#fileMime fileMime]]
+@ newItems | tabIns nextItemId newItem oldItems
+@ newState | tabIns b#items newItems state
+@ oldLocations | tabGet state b#itemLocations
+@ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+@ newLocations | tabIns nextItemId newItemLoc oldLocations
+@ newState | tabIns b#itemLocations newLocations newState
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+[newState (barCat [b#{** } name b#{ uploaded: } look])]
 
 = (handleDuoCmd playerId cmd target state)
 ; target will be a list of remainder without command
@@ -783,20 +809,78 @@ b#{your inventory is empty}
 * startingFiles
 * servThread
 
+= baseHeaders
+++ (b#{Content-Type}, b#{text/html; charset=utf-8})
+++ (b#{Server}, b#{Pallas/0.1})
+++ (b#{Access-Control-Allow-Methods}, b#{PUT, GET, POST, DELETE, OPTIONS})
+++ (b#{Access-Control-Allow-Headers}, b#{Origin, X-Requested-With, Content-Type, Accept})
+;++ (b#{Access-Control-Allow-Origin}, b#{*})
+
+= (mergeHeaders oldPairs newPairs)
+@ oldTab    | tabFromPairs oldPairs
+@ newTab    | tabFromPairs newPairs
+| tabToPairs | tabWeld newTab oldTab
+
+= (baseHeaderOverwrite newHeaders)
+| mergeHeaders baseHeaders newHeaders
+
+= (dynamicCors origin)
+[(b#{Access-Control-Allow-Origin}, origin) (b#{Content-Type}, b#{application/json}) (b#{Access-Control-Allow-Credentials}, b#{true}) (b#{Access-Control-Allow-Headers}, b#{Content-Type, Authorization, Player-Id}) (b#{Access-Control-Allow-Methods}, b#{POST, GET, PUT, OPTIONS})]
+
 (emptyFileServer req)=NONE
 
-= (fileServer (PIN st) [method path query headers (PIN body)])
-| trk [%fileServerRequest method path query headers body]
-;@ originHeader | **fromSome b#{localhost}
-;               | tabLookup b#{origin}
-;               | tabFromPairs headers
-;@ head | dynamicCors originHeader
+;= (fileServer (PIN st) [method path query headers (PIN body)])
+;| trk [%fileServerRequest method path query headers body]
+;;@ originHeader | **fromSome b#{localhost}
+;;               | tabLookup b#{origin}
+;;               | tabFromPairs headers
+;;@ head | dynamicCors originHeader
+;# switch method
+;* _ | NONE
+;* GET
+;  @ pathWithQuery | path
+;  | trk [%pathwithq pathWithQuery]
+;  | trk [%path path]
+;  @ path | barTakeWhile (neq {?}) pathWithQuery
+;  @ quer | idx 1 | listToRow | barSplit {?} query
+;  @ originHeader | **fromSome b#{localhost}
+;                 | tabLookup b#{origin}
+;                 | tabFromPairs headers
+;  @ head | dynamicCors originHeader
+;  # switch path
+;  * b#{/file}
+;    | trk [%originHeader originHeader]
+;    @ queryMap | tabFromPairs | map (x & (listToRow | barSplit {=} x)) (listToRow | barSplit {&} quer)
+;    | trk [%queryMap queryMap]
+;    @ itemId | fromSome 1 (parseNat (tabGet queryMap b#itemId))
+;    | trk [%itemId itemId]
+;    @ item | tabGet items itemId
+;    | trk [%item item]
+;    @ type | (tabGet item b#fileMime)
+;    @ content | (tabGet item b#fileBytes)
+;    @ contentTypeHeader | [(b#{Content-Type}, type)]
+;    | trk [%content content]
+;    | trk [%type type]
+;    | trk [%head head]
+;    [200 b#gotcha head b#{}]
+;  * _
+;    | trk [%someThingElse path]
+;    | **fmapMaybe | hmLookup (barNat path) (**getFiles st)
+;    & [type (PIN content)]
+;    @ head | [(b#{Content-Type}, type)]
+;    [200 b#gotcha head content]
+;  [404 b#wut [] b#{nothing}]
+
+= (fileServer (PIN st) [method path headers (PIN body)])
+@ theirHead | tabFromPairs headers
 # switch method
 * _ | NONE
 * GET
+  @ path | barTakeWhile (neq {?}) path
   | **fmapMaybe | hmLookup (barNat path) (**getFiles st)
   & [type (PIN content)]
   @ head | [(b#{Content-Type}, type)]
+  ; TODO: gets are not protected! because loading assets becomes hard
   [200 b#gotcha head content]
 
 = (modifyState vSt fun return)
@@ -838,8 +922,6 @@ b#{your inventory is empty}
 : who < **bindMaybe (tabLookup %who map)
 who
 
-= (dynamicCors origin)
-[(b#{Access-Control-Allow-Origin}, origin) (b#{Content-Type}, b#{application/json}) (b#{Access-Control-Allow-Credentials}, b#{true}) (b#{Access-Control-Allow-Headers}, b#{Content-Type, Authorization}) (b#{Access-Control-Allow-Methods}, b#{POST, GET, PUT, OPTIONS})]
 
 = (buildWhoJson st)
 @ COG_STATE(..) st
@@ -884,6 +966,42 @@ jval
   @ path | barTakeWhile (neq {?}) pathWithQuery
   @ quer | idx 1 | listToRow | barSplit {?} query
   # switch path
+  * b#{/lookItem}
+    : (PIN st) < readRef vSt
+    @ gameState | getMudState st
+    @ items (tabGet gameState b#items)
+    @ queryMap | tabFromPairs | map (x & (listToRow | barSplit {=} x)) (listToRow | barSplit {&} quer)
+    @ playerId | fromSome 1 (parseNat (tabGet queryMap b#playerId))
+    @ queryId | fromSome 1 (parseNat (tabGet queryMap b#itemId))
+    @ roomId | (curPos playerId gameState)
+    @ itemId | getItemIdFromEnumerated queryId roomId gameState
+    @ item | tabGet items itemId
+    | trk [%item item]
+    @ type | (tabGet item b#fileMime)
+    @ content | (tabGet item b#fileBytes)
+    @ contentTypeHeader | [(b#{Content-Type}, type)]
+    | trk [%type type]
+    | trk [%head head]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head content))
+    | return ()
+  * b#{/adoreItem}
+    : (PIN st) < readRef vSt
+    @ gameState | getMudState st
+    @ items (tabGet gameState b#items)
+    @ queryMap | tabFromPairs | map (x & (listToRow | barSplit {=} x)) (listToRow | barSplit {&} quer)
+    @ playerId | fromSome 1 (parseNat (tabGet queryMap b#playerId))
+    @ queryId | fromSome 1 (parseNat (tabGet queryMap b#itemId))
+    @ roomId | (curPos playerId gameState)
+    @ itemId | getInventoryIdFromEnumerated queryId roomId gameState
+    @ item | tabGet items itemId
+    | trk [%item item]
+    @ type | (tabGet item b#fileMime)
+    @ content | (tabGet item b#fileBytes)
+    @ contentTypeHeader | [(b#{Content-Type}, type)]
+    | trk [%type type]
+    | trk [%head head]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head content))
+    | return ()
   * b#{/seed}
     : (PIN st) < readRef vSt
     @ seedBS | _SaveSeed (getMudState st)
@@ -943,6 +1061,37 @@ jval
     @ worldBytes (print playerId changed msg)
     ; take a command, update the state, respond with print
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
+    | return ()
+  * b#{/file}
+    : (PIN st) < readRef vSt
+    @ barType | **fromSome b#{text/plain}
+              | tabLookup b#{content-type}
+              | tabFromPairs headers
+    @ playerId | **fromSome "1"
+               | tabLookup b#{player-id}
+               | tabFromPairs headers
+    @ playerId | fromSome 1 (parseNat playerId)
+    @ delimiter | x#0d0a0d0a ; this is the \r\n\r\n between form-data headers and body
+    | trk [%delimiter delimiter]
+    @ offset | getOffset delimiter body
+    | trk [%offset offset]
+    @ fileBytes | barDrop offset body
+    @ fileMime | barType
+    @ gameState | getMudState st
+    | trk [%playerId playerId]
+    | trk [%fileBar fileBytes]
+    | trk [%fileMime fileMime]
+    @ look | b#{defective boat} ; TODO
+    @ desc | b#{it seems to be sinking; overcome with evil} ; TODO
+    @ [changed msg] | createFileItem playerId look desc fileBytes fileMime gameState
+    | trk [%changed changed]
+    | trk [%msg msg]
+    : _ < modifyState vSt & st
+                          | setMudState | changed
+                          | st
+    @ worldBytes (print playerId changed msg)
+    | trk [%worldBytes worldBytes]
+    : _ < fork (syscall (**HTTP_ECHO rid 201 b#done head worldBytes))
     | return ()
   * b#{/seed}
     | trk [%posted body]
@@ -1013,7 +1162,8 @@ jval
 = (spinMud return)
 : servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
 : vSt         < newRef (PIN | newCogState servThread)
-: timerThread < fork (tick vSt)
+: _           < modifyState vSt id
+;: timerThread < fork (tick vSt)
 : httpThread1 < fork (runHttpServer vSt)
 : httpThread2 < fork (runHttpServer vSt)
 | return ()
