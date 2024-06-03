@@ -119,7 +119,7 @@ import Data.IntMap.Strict   (minView)
 import Fan.Convert          (FromNoun(..), ToNoun(..), fromNoun, toNoun)
 import Optics               (set)
 import Server.Convert       ()
-import Server.Types.Logging (CogId(..))
+-- import Server.Types.Logging (CogId(..))
 import System.Directory     (removeFile)
 import System.IO.Error      (catchIOError)
 
@@ -137,8 +137,8 @@ import qualified Network.WebSockets             as WS
 --------------------------------------------------------------------------------
 
 data RawRequest = RR
-    { cogId    :: CogId
-    , vals     :: Vector Fan
+    { -- cogId    :: CogId
+      vals     :: Vector Fan
     , callback :: TVar (Maybe (Fan -> STM ()))
     }
 
@@ -281,8 +281,8 @@ data CogState = COG_STATE
 
 data HWState = HW_STATE
     { mach    :: FilePath
-    , wsApp   :: CogId -> WS.ServerApp
-    , cogs    :: TVar (Map CogId CogState)
+    , wsApp   :: WS.ServerApp
+    , cogs    :: TVar CogState -- TODO remove plural s
     , store   :: LmdbStore
     , manager :: Client.Manager
     }
@@ -307,8 +307,8 @@ startCog lmdbStore st cogName = do
                  (fromIntegral listenPort :: Nat)
 -}
 
-stopCogById :: HWState -> CogId -> IO ()
-stopCogById st cogId = do
+stopCogById :: HWState -> IO () -- TODO doesn't really make sense anymore
+stopCogById st = undefined {- do
     maybeCogState <-
         atomically do
             oldTab <- readTVar st.cogs
@@ -316,9 +316,10 @@ stopCogById st cogId = do
             pure (lookup cogId oldTab)
 
     maybe pass cancelCog maybeCogState
+    -}
 
-spinCog :: Debug => HWState -> CogId -> IO ()
-spinCog st cogId = do
+spinCog :: Debug => HWState -> IO () -- TODO custom port
+spinCog st = do
     traceM "HTTP_SPINNING"
     let localhost = N.tupleToHostAddress (0x7f, 0, 0, 1)
     let flags = [N.AI_NUMERICHOST, N.AI_NUMERICSERV]
@@ -331,8 +332,9 @@ spinCog st cogId = do
     debugVal ("_http_port")
              (fromIntegral listenPort :: Nat)
 
-    let baseName  = (tshow cogId.int) <> ".http.port"
-    let portFile = st.mach </> unpack baseName
+    let baseName  = "MyCog" <> ".http.port" -- TODO lol
+    let portFile = st.mach </> --unpack
+                               baseName
     debugTextVal ("_http_port_file") (pack portFile)
     writeFileUtf8 portFile (tshow listenPort)
 
@@ -347,7 +349,7 @@ spinCog st cogId = do
         liveClientReqs    <- newTVarIO emptyPool
         pendingClientReqs <- newTVarIO []
         mdo
-            serverThread <- async (servThread st.store (st.wsApp cogId) cs)
+            serverThread <- async (servThread st.store st.wsApp cs)
             clientThread <- async (clientWorker st.manager cs)
             let file = portFile
             let ~cs  = COG_STATE{sock,port,file,serverThread,serv,hear,lock,
@@ -360,7 +362,7 @@ spinCog st cogId = do
     --
     -- This is safe, but is an implicit invariant that would be nice
     -- to factor-out eventually.
-    atomically $ modifyTVar st.cogs $ insertMap cogId cogState
+    atomically $ writeTVar st.cogs cogState
 {-
             sock <- pure listenSocket
             port <- pure listenPort
@@ -590,23 +592,23 @@ clientExnNoun = \case
 
 runSysCall :: HWState -> SysCall -> STM (Cancel, [Flow])
 runSysCall st syscall = do
-    mCog <- lookup syscall.cog <$> readTVar st.cogs
-    case mCog of
+    cog <- readTVar st.cogs
+{-  case mCog of
         Nothing -> do
             -- traceM "NO COG"
             fillInvalidSyscall syscall
             pure (CANCEL pass, [])
 
-        Just cog -> do
-            -- traceM "FOUND COG"
-            case decodeHttpRequest syscall.args of
-                Nothing        -> fillInvalidSyscall syscall $>
-                                  (CANCEL pass, [])
-                Just (REQ q)   -> onReq cog q
-                Just HEAR      -> onHear cog
-                Just (HOLD r)  -> onHold cog r
-                Just (SERV ss) -> onServ cog ss
-                Just (ECHO r)  -> onEcho cog r syscall.cause
+        Just cog -> do -}
+    -- traceM "FOUND COG"
+    case decodeHttpRequest syscall.args of
+        Nothing        -> fillInvalidSyscall syscall $>
+                          (CANCEL pass, [])
+        Just (REQ q)   -> onReq cog q
+        Just HEAR      -> onHear cog
+        Just (HOLD r)  -> onHold cog r
+        Just (SERV ss) -> onServ cog ss
+        Just (ECHO r)  -> onEcho cog r syscall.cause
   where
     onReq :: CogState -> ClientReq -> STM (Cancel, [Flow])
     onReq cog req = do
@@ -776,7 +778,7 @@ createHardwareHttp
     :: Debug
     => FilePath
     -> LmdbStore
-    -> (CogId -> WS.ServerApp)
+    -> WS.ServerApp
     -> Acquire Device
 createHardwareHttp mach store wsApp = do
     st <- mkAcquire startup shutdown
@@ -790,9 +792,7 @@ createHardwareHttp mach store wsApp = do
 
   where
     shutdown :: HWState -> IO ()
-    shutdown st = do
-        cogs <- atomically (readTVar st.cogs)
-        for_ cogs cancelCog
+    shutdown st = cancelCog =<< atomically (readTVar st.cogs)
 
     startup :: IO HWState
     startup = do

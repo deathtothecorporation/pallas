@@ -65,7 +65,7 @@ receiptQueueMax = 65536
 --------------------------------------------------------------------------------
 
 data Moment = MOMENT {
-  val  :: Map CogId CogState,
+  val  :: CogState,
   work :: NanoTime
   }
 
@@ -142,11 +142,11 @@ data Response
     | RespWhat (Set Nat)
     | RespTell TellPayload
     | RespAsk TellOutcome
-    | RespSpin CogId Fan
-    | RespReap CogId (Maybe CogState)
-    | RespStop CogId (Maybe CogState)
-    | RespWait CogId
-    | RespWho CogId
+--    | RespSpin Fan
+    | RespReap (Maybe CogState)
+    | RespStop (Maybe CogState)
+    | RespWait
+--  | RespWho
   deriving (Show)
 
 responseToVal :: Response -> Fan
@@ -155,11 +155,11 @@ responseToVal (RespWhat w) = toNoun w
 responseToVal (RespTell TELL_PAYLOAD{..}) = fanIdx 1 ret
 responseToVal (RespAsk (OutcomeOK val _)) = (NAT 0) %% val
 responseToVal (RespAsk OutcomeCrash) = (NAT 0)
-responseToVal (RespSpin (COG_ID id) _) = fromIntegral id
-responseToVal (RespReap _ f) = toNoun f
-responseToVal (RespStop _ f) = toNoun f
-responseToVal (RespWait _) = (NAT 0)
-responseToVal (RespWho (COG_ID id)) = fromIntegral id
+-- responseToVal (RespSpin (COG_ID id) _) = fromIntegral id
+responseToVal (RespReap f) = toNoun f
+responseToVal (RespStop f) = toNoun f
+responseToVal RespWait = (NAT 0)
+-- responseToVal (RespWho (COG_ID id)) = fromIntegral id
 responseToVal (RespEval e)   =
     ROW case e of
         TIMEOUT   -> mempty                      -- []
@@ -176,9 +176,8 @@ responseToReceiptItem (idx, tup) = case tup.resp of
     RespAsk (OutcomeOK _ tellid) -> (idx, ReceiptAsk tellid)
     resp                         -> (idx, ReceiptVal (responseToVal resp))
 
-makeOKReceipt :: CogId -> [(Int, ResponseTuple)] -> Receipt
-makeOKReceipt cogId =
-    RECEIPT_OK cogId . mapFromList . fmap responseToReceiptItem
+makeOKReceipt :: [(Int, ResponseTuple)] -> Receipt
+makeOKReceipt = RECEIPT_OK . mapFromList . fmap responseToReceiptItem
 
 data CallRequest = CR
     { durable :: Bool
@@ -193,8 +192,8 @@ data SpinRequest = SR
   deriving (Show)
 
 data AskRequest = ASKR
-    { cogDst  :: CogId
-    , channel :: Word64
+    { -- cogDst  :: CogId
+      channel :: Word64
     , msg     :: Fan
     }
   deriving (Show)
@@ -206,9 +205,9 @@ data Request
     | ReqTell Word64 Fan
     | ReqAsk  AskRequest
     | ReqSpin SpinRequest
-    | ReqReap CogId
-    | ReqStop CogId
-    | ReqWait CogId
+    | ReqReap -- CogId
+    | ReqStop -- CogId
+    | ReqWait -- CogId
     | ReqWho
     | UNKNOWN Fan
   deriving (Show)
@@ -285,7 +284,8 @@ data EvalCancelledError = EVAL_CANCELLED
 -- index in that cog's requests table, there is a raw fan value and a
 -- `LiveRequest` which contains STM variables to listen
 type CogSysCalls = IntMap (Fan, LiveRequest)
-type MachineSysCalls = Map CogId CogSysCalls
+type MachineSysCalls = -- Map CogId
+                       CogSysCalls
 
 -- | The PendingAsk contains a pointer to an %asking request, along with its
 -- value. It exists so we can quickly look up its %msg at execution time from a
@@ -798,13 +798,12 @@ buildLiveRequest
     => Flow
     -> Runner
     -> MachineContext
-    -> CogId
     -> RequestIdx
     -> Request
     -> STM ([Flow], LiveRequest, Maybe (STM OnCommitFlow))
-buildLiveRequest causeFlow runner ctx cogId reqIdx = \case
+buildLiveRequest causeFlow runner ctx reqIdx = \case
     ReqEval EVAL_REQUEST{..} -> do -- timeoutMs func args -> do
-        let req = EVAL_REQUEST{flow=causeFlow, timeoutMs, func, args, cogId}
+        let req = EVAL_REQUEST{flow=causeFlow, timeoutMs, func, args}
         leRecord <- pleaseEvaluate ctx.eval req
         pure ([], LiveEval{leIdx=reqIdx, leRecord}, Nothing)
 
@@ -1432,12 +1431,11 @@ parseAllRequests runner = do
   pure $ concatUnzip actions
 
 -- | Given a noun in a runner, update the `requests`
-parseRequests :: Debug => Runner -> CogId -> STM ([Flow], [STM OnCommitFlow])
-parseRequests runner cogId = do
-    cogState <- (fromMaybe (error "no cogid m") . lookup cogId . (.val)) <$>
+parseRequests :: Debug => Runner -> STM ([Flow], [STM OnCommitFlow])
+parseRequests runner = do
+    cogState <- (.val) <$>
                 readTVar runner.vMoment
-    syscalls <- (fromMaybe mempty . lookup cogId) <$>
-                readTVar runner.vRequests
+    syscalls <- readTVar runner.vRequests
 
     let init = PRS{syscalls, flows=[], onPersist=[]}
 
@@ -1459,7 +1457,7 @@ parseRequests runner cogId = do
                   unless (member i expected) do
                       createReq i v
 
-    modifyTVar' runner.vRequests $ insertMap cogId st.syscalls
+    writeTVar runner.vRequests st.syscalls
 
     pure (st.flows, st.onPersist)
 
@@ -1518,7 +1516,7 @@ parseRequests runner cogId = do
         let rIdx = RequestIdx i
 
         (startedFlows, live, onPersist) <- lift $
-          buildLiveRequest f runner runner.ctx cogId rIdx request
+          buildLiveRequest f runner runner.ctx rIdx request
 
         case onPersist of
             Nothing -> pure ()

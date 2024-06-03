@@ -908,8 +908,8 @@ createHardwarePort :: Acquire Device
 createHardwarePort = do
     st <- mkAcquire startup shutdown
     pure DEVICE
-        { spin = \_ -> pass -- Don't care which cog makes the calls.
-        , stop = \_ -> pass
+        { spin = pass
+        , stop = pass
         , call = runSysCall st
         , category = categoryCall
         , describe = describeCall

@@ -25,7 +25,7 @@ where
 
 import Fan.Convert
 import PlunderPrelude
-import Server.Types.Logging
+-- import Server.Types.Logging
 
 import Fan      (Fan)
 import Fan.Prof (Flow, allocateResponseFlow)
@@ -65,8 +65,8 @@ newtype Cancel = CANCEL { action :: STM () }
 -- Callbacks -------------------------------------------------------------------
 
 data SysCall = SYSCALL
-    { cog   :: CogId
-    , dev   :: DeviceName
+    { -- cog   :: CogId
+      dev   :: DeviceName
     , args  :: Vector Fan
     , state :: CallStateVar
     , cause :: Flow
@@ -74,9 +74,9 @@ data SysCall = SYSCALL
   deriving Show
 
 data Device = DEVICE
-    { spin     :: CogId -> IO ()
+    { spin     :: IO ()
     , call     :: SysCall -> STM (Cancel, [Flow])
-    , stop     :: CogId -> IO ()
+    , stop     :: IO ()
     , category :: Vector Fan -> Text
     , describe :: Vector Fan -> Text
     }

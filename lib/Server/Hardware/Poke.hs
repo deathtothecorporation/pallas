@@ -18,7 +18,7 @@ import Server.LmdbStore
 import Control.Concurrent.STM.TVar (stateTVar)
 import Data.Acquire                (Acquire, mkAcquire)
 import Data.Heap                   (MinHeap)
-import Server.Types.Logging        (CogId(..))
+-- import Server.Types.Logging        (CogId(..))
 
 import qualified Data.Heap   as Heap
 import qualified Data.Map    as M
@@ -30,7 +30,7 @@ import qualified Fan         as F
 -- request.
 type SubmitPoke = CogId -> Vector Text -> F.Fan -> IO ()
 
-type RequestStorage = Map (CogId, Vector Text) (MinHeap Int)
+type RequestStorage = Map (Vector Text) (MinHeap Int)
 
 data HWState = HW_STATE
     { requestPool :: TVar (Pool SysCall)

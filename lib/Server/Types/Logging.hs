@@ -16,8 +16,8 @@ import Server.Time
 --------------------------------------------------------------------------------
 
 -- | A numeric identifier for a cog within a single machine.
-newtype CogId = COG_ID { int :: Word64 }
-  deriving newtype (Eq, Show, Ord)
+-- newtype CogId = COG_ID { int :: Word64 }
+--   deriving newtype (Eq, Show, Ord)
 
 -- | A positional index into the machine's Request vector.
 newtype RequestIdx = RequestIdx { int :: Int }
@@ -40,25 +40,29 @@ data ReceiptItem
   -- | Receipt of a serve. {reqIdx} points back to the requesting
   -- cause. `(sender, serveId)` should form a unique identifier for the return
   -- value to be consumed in ReceiptRequest.
-  | ReceiptTell { asker :: CogId, reqIdx :: RequestIdx, tellId :: TellId }
+  | ReceiptTell { -- asker :: CogId,
+                  reqIdx :: RequestIdx, tellId :: TellId }
 
   -- | Receipt of a request getting fulfilled from a serve.
   | ReceiptAsk { tellId :: TellId }
 
   -- | Receipt of a spin. Contains the assigned cog id.
-  | ReceiptSpun { cogNum :: CogId }
+  | ReceiptSpun -- { cogNum :: CogId }
 
   -- | Receipt of a reap.
-  | ReceiptReap { cogNum :: CogId }
+  | ReceiptReap -- { cogNum :: CogId }
 
   -- | Receipt of a cog stop.
-  | ReceiptStop { cogNum :: CogId }
+  | ReceiptStop -- { cogNum :: CogId }
   deriving (Eq, Ord, Show)
 
 data Receipt
-    = RECEIPT_OK { cogNum :: CogId, inputs :: IntMap ReceiptItem }
-    | RECEIPT_CRASHED { cogNum :: CogId, op :: Nat, arg :: Fan }
-    | RECEIPT_TIME_OUT { cogNum :: CogId, timeoutAmount :: NanoTime }
+    = RECEIPT_OK { -- cogNum :: CogId,
+                   inputs :: IntMap ReceiptItem }
+    | RECEIPT_CRASHED { -- cogNum :: CogId,
+                        op :: Nat, arg :: Fan }
+    | RECEIPT_TIME_OUT { -- cogNum :: CogId,
+                         timeoutAmount :: NanoTime }
   deriving (Show)
 
 data CogFailure
@@ -67,7 +71,7 @@ data CogFailure
     | INVALID_TIMEOUT_IN_LOGBATCH
     | INVALID_CRASHED_IN_LOGBATCH
     | INVALID_OK_RECEIPT_IN_LOGBATCH
-    | INVALID_SPUN_RECEIPT_IN_LOGBATCH CogId
+    | INVALID_SPUN_RECEIPT_IN_LOGBATCH -- CogId
     | INVALID_TELL_RECEIPT_IN_LOGBATCH
     | INVALID_ASK_RECEIPT_IN_LOGBATCH
     | INVALID_REAP_RECEIPT_IN_LOGBATCH
