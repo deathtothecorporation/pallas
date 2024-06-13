@@ -163,12 +163,14 @@
       [b#name b#{Vinney}]
       [b#currentPosition 1]
       [b#hp 10]
+      [b#seenRooms [1]]
 ++  , 2
     | tabFromPairs
     , [b#connected 0]
       [b#name b#{Chase}]
       [b#currentPosition 5]
       [b#hp 10]
+      [b#seenRooms [5]]
 
 = yell | []
 
@@ -188,8 +190,13 @@
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
 @ player | tabGet players playerId
-@ pMoved | tabIns b#currentPosition moveTo player
-@ updPlayers | tabIns playerId pMoved players
+@ seenRooms | tabGet player b#seenRooms
+@ seenRoomsSet | setFromRow seenRooms
+@ newSeenRoomsSet | setIns moveTo seenRoomsSet
+@ newSeenRoomsRow | setToRow newSeenRoomsSet
+@ player | tabIns b#currentPosition moveTo player
+@ player  | tabIns b#seenRooms newSeenRoomsRow player
+@ updPlayers | tabIns playerId player players
 | tabIns b#players updPlayers state
 
 ; Don't use this. poorly-conceived.
@@ -348,20 +355,29 @@ newState
 
 = (printARoom playerId state roomId)
 @ entrances | (tabGet (roomGet roomId state) b#exits)
+@ player | playerGet playerId state
+@ seenRooms | tabGet player b#seenRooms
 | if (eql (curPos playerId state) roomId)
   b#{@}
+; TODO: short-circuit with ? if unseen.
 | if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-  b#{ɐ}
-| if (len entrances)
-  | printEntrance entrances
-b#{#}
+  | if (has roomId seenRooms)
+    b#{ɐ}
+  b#{?}
+| if (has roomId seenRooms)
+  | if (len entrances)
+    | printEntrance entrances
+  b#{#}
+b#{?}
 
-= (print playerId state message)
-; @ rows | len grid
-; @ cols | len (idx 0 grid)
+= (displayMap playerId state)
 @ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
 @ rowLines | barCat | intersperse barNewline gridRows
-| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+rowLines
+
+= (print playerId state message)
+@ mapPrint | displayMap playerId state
+| barUnlines | intersperse barNewline [mapPrint "" message "" b#{> }]
 
 =?= (dirIndex b{n})
   | 0
