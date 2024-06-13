@@ -1,7 +1,7 @@
 #### demo_mud_2 <- prelude
 
-; stack run plunder save mud.seed sire/demo_mud_2.sire
-; stack run plunder repl mud.seed
+; stack run plunder save .seed/mud.seed sire/demo_mud_2.sire
+; stack run plunder repl .seed/mud.seed
 
 :| sire
 
