@@ -83,7 +83,7 @@
       [b#desc b#{This is room 8}]
 ++  , 9
     | tabFromPairs
-    , [b#exits [0 13 2 8]]
+    , [b#exits [0 13 7 8]]
       [b#desc b#{}]
 ++  , 10
     | tabFromPairs
@@ -174,44 +174,7 @@
 
 = yell | []
 
-; generateInitialState
-= (gis)
-| tabFromPairs
-, [b#rooms rooms]
-  [b#roomT rooms]
-  [b#grid grid]
-  [b#items items]
-  [b#inventory []]
-  [b#itemLocations itemLocations]
-  [b#players playersT]
-  [b#actingId 1]
-  [b#yell yell]
-
-= (movePlayer playerId moveTo state)
-@ players | (tabGet state b#players)
-@ player | tabGet players playerId
-@ seenRooms | tabGet player b#seenRooms
-@ seenRoomsSet | setFromRow seenRooms
-@ newSeenRoomsSet | setIns moveTo seenRoomsSet
-@ newSeenRoomsRow | setToRow newSeenRoomsSet
-@ player | tabIns b#currentPosition moveTo player
-@ player  | tabIns b#seenRooms newSeenRoomsRow player
-@ updPlayers | tabIns playerId player players
-| tabIns b#players updPlayers state
-
-; Don't use this. poorly-conceived.
-; TODO: Probably use Sets to do these "diffs" nicely
-= (up change oldState)
-@ key | (idx 0 change)
-@ val | (idx 1 change)
-; | trk [%key key %val val]
-# switch key
-* b#playerMove
-  @ chgd | tabIns b#currentPosition val oldState
-  ; | trk [%chngddddd chgd]
-  chgd
-* _
-  oldState
+;; Game state getter/setter helpers
 
 = (stateGet key state)
 | tabGet state key
@@ -237,6 +200,50 @@
 = (actingPlayerSet playerId state)
 @ newState | tabIns b#actingId playerId state
 [newState b#{}]
+
+;;
+
+= (currentSeenRooms playerId playersT roomsT)
+@ player | tabGet playersT playerId
+| trk [%player player]
+@ currentRoomId | tabGet player b#currentPosition
+| trk [%curid currentRoomId]
+@ currentExits | tabGet (tabGet roomsT currentRoomId) b#exits
+| trk [%exits currentExits]
+| setDel 0 | setUnion (setFromRow currentExits) (setFromRow [currentRoomId])
+
+= (determineNewSeenRooms playerId roomId state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ seenRooms | tabGet player b#seenRooms
+@ seenRoomsSet | setFromRow seenRooms
+; TODO: use this if you want to add +1 to sight range / show the neighboring room
+; @ newSeenRoomsSet | setDel 0 | setUnion (setFromRow (exitsGet roomId state)) seenRoomsSet ; show through room's exits
+@ newSeenRoomsSet | setDel 0 | setUnion (setFromRow [roomId]) seenRoomsSet ; show just approahces
+| setToRow newSeenRoomsSet
+
+= (movePlayer playerId moveTo state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ newSeenRoomsRow | determineNewSeenRooms playerId moveTo state
+@ player | tabIns b#currentPosition moveTo player
+@ player  | tabIns b#seenRooms newSeenRoomsRow player
+@ updPlayers | tabIns playerId player players
+| tabIns b#players updPlayers state
+
+; Don't use this. poorly-conceived.
+; TODO: Probably use Sets to do these "diffs" nicely
+= (up change oldState)
+@ key | (idx 0 change)
+@ val | (idx 1 change)
+; | trk [%key key %val val]
+# switch key
+* b#playerMove
+  @ chgd | tabIns b#currentPosition val oldState
+  ; | trk [%chngddddd chgd]
+  chgd
+* _
+  oldState
 
 ; = (getPlayerIds roomId state)
 ; | filter neq-0
@@ -353,6 +360,16 @@ newState
     b{╶}
   b#{.}
 
+= (printApproach roomId vantageId state)
+; Print the stub directrion from the vantage point room to this one.
+@ exits | rowCons 0 (exitsGet roomId state)
+@ approaches [b#{ } b{╵} b{╶} b{╷} b{╴} ]
+@ idxOfApproach | elemIdx vantageId exits NONE id
+| if idxOfApproach
+  | idx idxOfApproach approaches
+b{ }
+
+
 = (describeExits eRow)
 @ dirs | listFromRow [b#n b#e b#s b#w]
 @ exitsBinary | (map (neq 0) eRow)
@@ -368,15 +385,13 @@ newState
 @ seenRooms | tabGet player b#seenRooms
 | if (eql (curPos playerId state) roomId)
   b#{@}
-; TODO: short-circuit with ? if unseen.
+| if (not (has roomId seenRooms))
+  | printApproach roomId (tabGet player b#currentPosition) state
+  ; b#{ }
 | if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-  | if (has roomId seenRooms)
-    b#{ɐ}
-  b#{?}
-| if (has roomId seenRooms)
-  | if (len entrances)
-    | printEntrance entrances
-  b#{#}
+  b#{ɐ}
+| if (len entrances)
+  | printEntrance entrances
 b#{?}
 
 = (displayMap playerId state)
@@ -390,6 +405,22 @@ rowLines
 @ exits | exitsGet currentPosition state
 @ exitsDescribed | describeExits exits
 | barUnlines | intersperse barNewline [mapPrint "" exitsDescribed "" message "" b#{> }]
+
+; generateInitialState
+= (gis)
+; TODO: Update each player's seenRooms to include the neighbors of existing room?
+; @ playersT | foreach (tabKeysRow playersT) (id & tabIns id (tabIns b#seenRooms (currentSeenRooms id playersT rooms) (tabGet playersT id)) emptyTab)
+| tabFromPairs
+, [b#rooms rooms]
+  [b#roomT rooms]
+  [b#grid grid]
+  [b#items items]
+  [b#inventory []]
+  [b#itemLocations itemLocations]
+  [b#players playersT]
+  [b#actingId 1]
+  [b#yell yell]
+
 
 =?= (dirIndex b{n})
   | 0
