@@ -326,7 +326,7 @@ newState
 ;   b#{@}
 ; | natBar | showNat tile
 
-= (printEntrance eRow)
+= (printFoggedEntrance eRow)
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
     b#{┼}
@@ -360,6 +360,40 @@ newState
     b{╶}
   b#{.}
 
+= (printEntrance eRow)
+  # switch (map (neq 0) eRow)
+  * [1 1 1 1]
+    b#{╬}
+  * [0 1 1 1]
+    b#{╦}
+  * [1 1 0 1]
+    b#{╩}
+  * [1 1 1 0]
+    b{╠}
+  * [1 0 1 1]
+    b{╣}
+  * [1 0 1 0]
+    b{║}
+  * [0 1 0 1]
+    b{═}
+  * [0 1 1 0]
+    b{╔}
+  * [0 0 1 1]
+    b{╗}
+  * [1 1 0 0]
+    b{╚}
+  * [1 0 0 1]
+    b{╝}
+  * [1 0 0 0]
+    b{╨}
+  * [0 0 1 0]
+    b{╥}
+  * [0 0 0 1]
+    b{╡}
+  * [0 1 0 0]
+    b{╞}
+  b#{.}
+
 = (printApproach roomId vantageId state)
 ; Print the stub directrion from the vantage point room to this one.
 @ exits | rowCons 0 (exitsGet roomId state)
@@ -368,7 +402,6 @@ newState
 | if idxOfApproach
   | idx idxOfApproach approaches
 b{ }
-
 
 = (describeExits eRow)
 @ dirs | listFromRow [b#n b#e b#s b#w]
@@ -383,15 +416,20 @@ b{ }
 @ entrances | (tabGet (roomGet roomId state) b#exits)
 @ player | playerGet playerId state
 @ seenRooms | tabGet player b#seenRooms
+@ currentUnfogged | (tabGet (curRoom playerId state) b#exits)
 | if (eql (curPos playerId state) roomId)
   b#{@}
 | if (not (has roomId seenRooms))
   | printApproach roomId (tabGet player b#currentPosition) state
   ; b#{ }
 | if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-  b#{ɐ}
+  | if (has roomId currentUnfogged)
+    b#{ɐ}
+  | printFoggedEntrance entrances
 | if (len entrances)
-  | printEntrance entrances
+  | if (has roomId currentUnfogged)
+    | printEntrance entrances
+  | printFoggedEntrance entrances
 b#{?}
 
 = (displayMap playerId state)
