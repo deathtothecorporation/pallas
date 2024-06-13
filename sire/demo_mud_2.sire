@@ -353,6 +353,15 @@ newState
     b{╶}
   b#{.}
 
+= (describeExits eRow)
+@ dirs | listFromRow [b#n b#e b#s b#w]
+@ exitsBinary | (map (neq 0) eRow)
+@ exitList | listFromRow exitsBinary
+@ availableDirs | listZip dirs exitList
+@ filteredDirs | listFilter (pair & neq 0 (idx 1 pair)) availableDirs ; Keep only available directions
+@ formattedNames | map (pair & idx 0 pair) (listToRow filteredDirs)
+| barCat [b#{You can move: } (barCat | (intersperse b#{, } formattedNames))]
+
 = (printARoom playerId state roomId)
 @ entrances | (tabGet (roomGet roomId state) b#exits)
 @ player | playerGet playerId state
@@ -377,7 +386,10 @@ rowLines
 
 = (print playerId state message)
 @ mapPrint | displayMap playerId state
-| barUnlines | intersperse barNewline [mapPrint "" message "" b#{> }]
+@ currentPosition | curPos playerId state
+@ exits | exitsGet currentPosition state
+@ exitsDescribed | describeExits exits
+| barUnlines | intersperse barNewline [mapPrint "" exitsDescribed "" message "" b#{> }]
 
 =?= (dirIndex b{n})
   | 0
