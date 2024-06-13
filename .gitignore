@@ -1,5 +1,6 @@
 *~
 .ships
+.seed
 .demo*
 dist-newstyle/
 .multi
