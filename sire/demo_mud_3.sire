@@ -191,28 +191,42 @@
 ;    map_grid, rooms, tile_id = fill_row(map_grid, rooms, tile_id, x, y, width, size)
 ;    return fill_area(map_grid, rooms, tile_id, x, y + 1, width, height - 1, size)
 
-= (fillRow grid rooms tileId x y width height size)
-| trk [%xxxFillRow]
-[[0 0 0 0 0 0 0 0 0 0] rooms tileId]
-; | if | or (eql width 0) | or (gth x size) | or (gth y size)
-;   [grid rooms tileId]
-; ; grid[y][x] = tileId
-; @ gridRow | (idx y grid)
-; @ gridX | (idx x gridY)
-; @ grid | ; set y x to tileId
-; ; rooms[tileId] = {"exits": [0, 0, 0, 0], "description": ""}
-; @ rooms | ; set tileId to default tile thing above.
-; | fillRow grid rooms (inc tileId) (inc x) y (dec width) size
+= (insertAt i n row)
+@ h | idx 0 (splitAt i row)
+@ t | idx 1 (splitAt i row)
+@ t | drop 1 t
+@ t | weld [n] t
+| weld h t
+
+= (fillRow grid rooms tileId x y width size)
+; | trk [%xxxFillRow grid tileId x y width size]
+| if | or (eql width 0) | or (gte x size) (gte y size)
+  | trk [%fillIFD]
+  [grid rooms tileId]
+; | trk [%xxxfillrowGridTileId tileId]
+; | trk [%xxxfillrowGrid grid]
+; | trk [%xxxfillrowGridY y]
+@ gridRow | (idx y grid)
+; | trk [%xxxfillRowGridRow gridRow]
+@ gridRow | insertAt x tileId gridRow
+; | trk [%xxxfillRowGridRowUpdated gridRow]
+; grid[y][x] = tileId
+@ grid | insertAt y gridRow grid
+; | trk [%xxxfillRowGridUpdated grid]
+; rooms[tileId] = {"exits": [0, 0, 0, 0], "description": ""}
+@ rooms | emptyTab ; TODO: set tileId to default tile thing above.
+| trk [%xxxFillRowRecurring]
+| fillRow grid rooms (inc tileId) (inc x) y (dec width) size
 
 = (fillArea grid rooms tileId x y width height size)
-| trk [%xxxFillArea]
+| trk [%xxxFillArea grid]
 | if (eql height 0)
   [grid rooms tileId]
-@ [grid rooms tileId] | (fillRow grid rooms tileId x y width size)
+| trk [%xxxFillRecurring]
+@ [grid rooms tileId] | fillRow grid rooms tileId x y width size
 | fillArea grid rooms tileId x (inc y) width (dec height) size
 
 = (getRand min max seed)
-| trk [%xxxGetRand]
 @ r | mkRand seed
 @ n | barNat (idx 0 r)
 @ range | inc (sub max min)
@@ -222,11 +236,16 @@
 | trk [%xxxAreas]
 ; TOOD: randomness is fake here..
 | if (eql currentArea areaCount)
+  | trk [%generateAreasDone %curr currentArea %count areaCount]
+  | trk [%grid grid]
+  | trk [%rooms rooms]
   [grid rooms tileId]
+| trk [%xxxgenerateAreasRecurring]
 @ areaX | getRand 1 (sub size 2) seed
-@ areaY | getRand 1 (sub size 2) (inc seed) ; nudge it...?
-@ areaW | getRand 3 7 seed
-@ areaH | getRand 3 7 (inc seed)
+@ areaY | getRand 1 (sub size 2) (mul 2 seed) ; nudge it...?
+@ areaW | getRand 3 10 seed       ; room size
+@ areaH | getRand 3 9 (mul 3 seed) ; room size
+| trk [%xywh areaX areaY areaW areaH]
 @ [grid rooms tileId] | fillArea grid rooms tileId areaX areaY areaW areaH size
 | generateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
 
@@ -239,14 +258,19 @@
 ;      [b#desc b#{it's damp and sticky}]
 
 = (generateMap size areaCount seed)
-@ initialMap | map (i & (gen 10 (i & 0))) (gen 10 (i & 0))
+@ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
 @ initialRooms | emptyTab
 @ tileId | 1
 @ curArea | 0
 | trk [%xxxGenerating]
-@ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
+; @ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
+;[grid rooms tileId]
+| generateAreas initialMap initialRooms tileId areaCount size curArea seed
 
-| generateMap 10 2 123123
+= randomMap | generateMap 43 9 3
+                          ; size
+                             ; room count
+                               ; entropy seed
 
 ;;;; end random map generator
 
@@ -780,6 +804,7 @@ b#{your inventory is empty}
 > PlayerID > Input > State > (State, Message)
 = (commandDo input state)
 | trk [%randomMap randomMap]
+| trk [%mapSize (len (idx 0 randomMap))]
 @ playerId | tabGet state b#actingId
 ; | trk [%cmdo input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input
@@ -787,11 +812,27 @@ b#{your inventory is empty}
 * handleSingleCmd playerId (idx 0 cmd) state
 * handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
 
+; = (print playerId state message)
+; ; @ rows | len grid
+; ; @ cols | len (idx 0 grid)
+; @ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
+; @ rowLines | barCat | intersperse barNewline gridRows
+; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+
+= (printrandom)
+; @ cols | len (idx 0 grid)
+@ gridRows | map (row & (barCat | map (tid & (if (eql tid 0) b#{#} b#{.})) row)) (idx 0 randomMap)
+@ rowLines | barCat | intersperse barNewline gridRows
+| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+
 = (tick state input)
 @ [changed msg] | commandDo input state
 ; | trk [%changed changed]
 @ newState | changed
 @ playerId | tabGet newState b#actingId
-| (print playerId newState msg, tick newState)
+| trk [%rm randomMap]
+| trk [%len (len randomMap)]
+| (printrandom, tick newState)
+; | (print playerId newState msg, tick newState)
 
 = main | tick gis
