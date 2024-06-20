@@ -1,0 +1,797 @@
+#### demo_mud_3 <- prelude
+
+; stack run plunder save .seed/mud.seed sire/demo_mud_3.sire
+; stack run plunder repl .seed/mud.seed
+
+:| sire
+:| gen
+
+;[ 8] [ 9] [13] [14];
+;[ 1] [ 7] [ 2] [10];
+;[ 3] [ 4] [ 5] [11];
+;[ 0] [ 6] [ 0] [12];
+
+; TODO / IDEAS
+; - [x] room descriptions
+; - [ ] manifest items
+; - [ ] allow for defining rooms, items, etc. all state in a separate file
+;       that gets ingested here.
+; - [ ] generate stuff in rooms from random tables
+;   - [ ] then add AI...
+; - [ ] doors that open and close
+; - [ ] seen/unseen rooms
+; - [ ] line of sight? (don't show things going on in rooms you can't see)
+; - [ ] sounds?
+; - [ ] range of sound (like line of sight)
+
+; TODO: generate random map.
+
+
+> Bar > Maybe Nat
+= (parseNat bar)
+@ wid (barLen bar)
+@ hed (barIdx 0 bar)
+| maybeGuardNot (isZero wid)
+| maybeGuard    (isDigit hed)
+@ acc (sub hed {0})
+^ (_ acc 1)
+? (go acc ix)
+| if (gte ix wid) (SOME acc)
+@ c (barGet bar ix)
+| maybeGuard (isDigit c)
+@ !acc (add (mul 10 acc) (sub c {0}))
+| go acc inc-ix
+
+= grid
+, [8 9 13 14]
+  [1 7 2 10]
+  [3 4 5 11]
+  [0 6 0 12]
+
+; exits: [0 0 3 0]
+;         n e s w
+= rooms
+| tabFromPairs
+++  , 1 ; room ID
+    | tabFromPairs
+    , [b#exits [8 7 3 0]]
+      [b#desc b#{it's damp and sticky}]
+++  , 2
+    | tabFromPairs
+    , [b#exits [13 10 5 7]]
+      [b#desc b#{the ceiling here is so high you can't see it}]
+++  , 3
+    | tabFromPairs
+    , [b#exits [1 4 0 0]]
+      [b#desc b#{}]
+++  , 4
+    | tabFromPairs
+    , [b#exits [7 5 6 3]]
+      [b#desc b#{}]
+++  , 5
+    | tabFromPairs
+    , [b#exits [2 11 0 4]]
+      [b#desc b#{}]
+++  , 6
+    | tabFromPairs
+    , [b#exits [4 0 0 0]]
+      [b#desc b#{}]
+++  , 7
+    | tabFromPairs
+    , [b#exits [9 2 4 1]]
+      [b#desc b#{}]
+++  , 8
+    | tabFromPairs
+    , [b#exits [0 9 1 0]]
+      [b#desc b#{This is room 8}]
+++  , 9
+    | tabFromPairs
+    , [b#exits [0 13 2 8]]
+      [b#desc b#{}]
+++  , 10
+    | tabFromPairs
+    , [b#exits [14 0 11 2]]
+      [b#desc b#{}]
+++  , 11
+    | tabFromPairs
+    , [b#exits [10 0 12 5]]
+      [b#desc b#{}]
+++  , 12
+    | tabFromPairs
+    , [b#exits [11 0 0 0]]
+      [b#desc b#{}]
+++  , 13
+    | tabFromPairs
+    , [b#exits [0 14 2 9]]
+      [b#desc b#{}]
+++  , 14
+    | tabFromPairs
+    , [b#exits [0 0 10 13]]
+      [b#desc b#{}]
+
+= (maxRow x)
+| foldl max (idx 0 x) x
+
+= items
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    ,  [b#look b#{a rusty dagger}]
+       [b#desc b#{it looks dull}]
+++  , 2
+    | tabFromPairs
+    , [b#look (# b {a cheeseburger})]
+      [b#desc (# b {it has a bite taken out of it})]
+++  , 3
+    | tabFromPairs
+    , [b#look b#{a large stone}]
+      [b#desc b#{there is some lichen on one side}]
+++  , 4
+    | tabFromPairs
+    , [b#look (# b {a ruby})]
+      [b#desc (# b {shiny})]
+++  , 5
+    | tabFromPairs
+    , [b#look (# b {the thing you've been looking for})]
+      [b#desc (# b {its not quite what you expected})]
+
+= itemLocations
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#roomId 1]
+      [b#playerId 0]
+++  , 2
+    | tabFromPairs
+    , [b#roomId 2]
+      [b#playerId 0]
+++  , 3
+    | tabFromPairs
+    , [b#roomId 2]
+      [b#playerId 0]
+++  , 4
+    | tabFromPairs
+    , [b#roomId 3]
+      [b#playerId 0]
+++  , 5
+    | tabFromPairs
+    , [b#roomId 6]
+      [b#playerId 0]
+
+= playersT
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 1]
+      [b#hp 10]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 5]
+      [b#hp 10]
+
+= yell | []
+
+
+;;;; random map generator
+
+;def fill_row(map_grid, rooms, tile_id, x, y, width, size):
+;    if width == 0 or x >= size or y >= size:
+;        return map_grid, rooms, tile_id
+;    map_grid[y][x] = tile_id
+;    rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
+;    return fill_row(map_grid, rooms, tile_id + 1, x + 1, y, width - 1, size)
+;
+;def fill_area(map_grid, rooms, tile_id, x, y, width, height, size):
+;    if height == 0:
+;        return map_grid, rooms, tile_id
+;    map_grid, rooms, tile_id = fill_row(map_grid, rooms, tile_id, x, y, width, size)
+;    return fill_area(map_grid, rooms, tile_id, x, y + 1, width, height - 1, size)
+
+= (fillRow grid rooms tileId x y width height size)
+| trk [%xxxFillRow]
+[[0 0 0 0 0 0 0 0 0 0] rooms tileId]
+; | if | or (eql width 0) | or (gth x size) | or (gth y size)
+;   [grid rooms tileId]
+; ; grid[y][x] = tileId
+; @ gridRow | (idx y grid)
+; @ gridX | (idx x gridY)
+; @ grid | ; set y x to tileId
+; ; rooms[tileId] = {"exits": [0, 0, 0, 0], "description": ""}
+; @ rooms | ; set tileId to default tile thing above.
+; | fillRow grid rooms (inc tileId) (inc x) y (dec width) size
+
+= (fillArea grid rooms tileId x y width height size)
+| trk [%xxxFillArea]
+| if (eql height 0)
+  [grid rooms tileId]
+@ [grid rooms tileId] | (fillRow grid rooms tileId x y width size)
+| fillArea grid rooms tileId x (inc y) width (dec height) size
+
+= (getRand min max seed)
+| trk [%xxxGetRand]
+@ r | mkRand seed
+@ n | barNat (idx 0 r)
+@ range | inc (sub max min)
+| add (mod n range) min
+
+= (generateAreas grid rooms tileId areaCount size currentArea seed)
+| trk [%xxxAreas]
+; TOOD: randomness is fake here..
+| if (eql currentArea areaCount)
+  [grid rooms tileId]
+@ areaX | getRand 1 (sub size 2) seed
+@ areaY | getRand 1 (sub size 2) (inc seed) ; nudge it...?
+@ areaW | getRand 3 7 seed
+@ areaH | getRand 3 7 (inc seed)
+@ [grid rooms tileId] | fillArea grid rooms tileId areaX areaY areaW areaH size
+| generateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
+
+
+;= initialRooms
+;| tabFromPairs
+;++  , 1 ; room ID
+;    | tabFromPairs
+;    , [b#exits [8 7 3 0]]
+;      [b#desc b#{it's damp and sticky}]
+
+= (generateMap size areaCount seed)
+@ initialMap | map (i & (gen 10 (i & 0))) (gen 10 (i & 0))
+@ initialRooms | emptyTab
+@ tileId | 1
+@ curArea | 0
+| trk [%xxxGenerating]
+@ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
+
+| generateMap 10 2 123123
+
+;;;; end random map generator
+
+
+; generateInitialState
+= (gis)
+| tabFromPairs
+, [b#rooms rooms]
+  [b#roomT rooms]
+  [b#grid grid]
+  [b#items items]
+  [b#inventory []]
+  [b#itemLocations itemLocations]
+  [b#players playersT]
+  [b#actingId 1]
+  [b#yell yell]
+
+= (movePlayer playerId moveTo state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ pMoved | tabIns b#currentPosition moveTo player
+@ updPlayers | tabIns playerId pMoved players
+| tabIns b#players updPlayers state
+
+; Don't use this. poorly-conceived.
+; TODO: Probably use Sets to do these "diffs" nicely
+= (up change oldState)
+@ key | (idx 0 change)
+@ val | (idx 1 change)
+; | trk [%key key %val val]
+# switch key
+* b#playerMove
+  @ chgd | tabIns b#currentPosition val oldState
+  ; | trk [%chngddddd chgd]
+  chgd
+* _
+  oldState
+
+= (stateGet key state)
+| tabGet state key
+
+= (roomGet id state)
+| tabGet (stateGet b#rooms state) id
+
+= (exitsGet roomId state)
+| tabGet (roomGet roomId state) b#exits
+
+= (itemGet id state)
+| tabGet (stateGet b#items state) id
+
+= (playerGet id state)
+| tabGet (stateGet b#players state) id
+
+= (curPos playerId state)
+| tabGet (playerGet playerId state) b#currentPosition
+
+= (curRoom playerId state)
+| tabGet (stateGet b#roomT state) (curPos playerId state)
+
+= (actingPlayerSet playerId state)
+@ newState | tabIns b#actingId playerId state
+[newState b#{}]
+
+; = (getPlayerIds roomId state)
+; | filter neq-0
+; | map (filterByRoomId roomId)
+; | tabToPairs
+; | stateGet b#itemLocations state
+
+; general purpose "get all x val in map" function
+> Tab > Row
+= (tabGetValsOfKey t key)
+| listToRow
+| listMap (x & (tabGet x key)) (tabValsList t)
+
+= (itemLocationSetPlayer itemId playerId state)
+@ oldLocs | stateGet b#itemLocations state
+; | trk [%oldLocs oldLocs]
+; @ oldItemLoc | tabGet oldLocs itemId
+@ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+; | trk [%newItemLoc newItemLoc]
+@ newLocs | tabIns itemId newItemLoc oldLocs
+; | trk [%newLocs newLocs]
+@ newState | tabIns b#itemLocations newLocs state
+; | trk [%newState newState]
+newState
+
+= (itemLocationSetRoom itemId roomId state)
+@ oldLocs | stateGet b#itemLocations state
+; | trk [%oldLocs oldLocs]
+; @ oldItemLoc | tabGet oldLocs itemId
+@ newItemLoc | tabFromPairs [[b#playerId 0] [b#roomId roomId]]
+; | trk [%newItemLoc newItemLoc]
+@ newLocs | tabIns itemId newItemLoc oldLocs
+; | trk [%newLocs newLocs]
+@ newState | tabIns b#itemLocations newLocs state
+; | trk [%newState newState]
+newState
+
+;= (itemLocationSetRoom itemId roomId state)
+;0
+
+= (flatten rows)
+@ head (fromSome listHead rows)
+@ tail (slice rows 1 (len rows))
+| ifNot (len tail)
+  head
+| weld head (flatten tail)
+
+= (flatGrid)
+| flatten grid
+
+; ++ [1 [0 0 3 0]]
+; ++ [2 [0 2 4 0]]
+; ++ [3 [0 0 5 0]]
+; ++ [4 [1 4 0 0]]
+; ++ [5 [0 5 6 3]]
+; ++ [6 [4 0 0 0]]
+
+= (dirIndex dir)
+| if (eql dir b{n}) | 0
+| if (eql dir b{e}) | 1
+| if (eql dir b{s}) | 2
+| if (eql dir b{w}) | 3
+0
+
+; returns room id
+= (go playerId dir state)
+| if (eql (curRoom playerId state) 0)
+  | trk [%whereAreYou]
+  0
+@ nextRoom | get (tabGet (curRoom playerId state) b#exits) (dirIndex dir)
+; | trk [%next nextRoom]
+# switch nextRoom
+* 0
+  | curPos playerId state
+* _
+  nextRoom
+
+; = (me tile currentPosition)
+; | if (eql tile currentPosition)
+;   b#{@}
+; | natBar | showNat tile
+
+= (printEntrance eRow)
+  # switch (map (neq 0) eRow)
+  * [1 1 1 1]
+    b#{┼}
+  * [0 1 1 1]
+    b#{┬}
+  * [1 1 0 1]
+    b#{┴}
+  * [1 1 1 0]
+    b{├}
+  * [1 0 1 1]
+    b{┤}
+  * [1 0 1 0]
+    b{│}
+  * [0 1 0 1]
+    b{─}
+  * [0 1 1 0]
+    b{┌}
+  * [0 0 1 1]
+    b{┐}
+  * [1 1 0 0]
+    b{└}
+  * [1 0 0 1]
+    b{┘}
+  * [1 0 0 0]
+    b{╵}
+  * [0 0 1 0]
+    b{╷}
+  * [0 0 0 1]
+    b{╴}
+  * [0 1 0 0]
+    b{╶}
+  b#{.}
+
+= (printARoom playerId state roomId)
+@ entrances | (tabGet (roomGet roomId state) b#exits)
+| if (eql (curPos playerId state) roomId)
+  b#{@}
+| if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
+  b#{ɐ}
+| if (len entrances)
+  | printEntrance entrances
+b#{#}
+
+= (print playerId state message)
+; @ rows | len grid
+; @ cols | len (idx 0 grid)
+@ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
+@ rowLines | barCat | intersperse barNewline gridRows
+| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+
+=?= (dirIndex b{n})
+  | 0
+
+=?= (dirIndex b{e})
+  | 1
+
+=?= (dirIndex b{s})
+  | 2
+
+=?= (dirIndex b{w})
+  | 3
+
+=?= (dirIndex b{wut})
+  | 0
+
+=?= (curPos 1 gis)
+  | 1
+
+=?= 6
+  @ s | movePlayer 1 4 gis
+  | go 1 b{s} s
+
+=?= 5
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{e} s
+
+=?= 3
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{w} s
+
+=?= 8
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 1 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{n} s
+
+; this means going "x" actually goes north, because of dirIndex 0
+=?= 7
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 4 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{x} s
+
+; you're nowhere, can't go anywhere.
+=?= 0
+  @ players | (tabGet b#players gis)
+  @ us | tabGet players 1
+  @ usMoved | tabIns b#currentPosition 99 us
+  @ updPlayers | tabIns 1 usMoved players
+  @ s | tabIns b#players updPlayers gis
+  | go 1 b{n} s
+
+= (message playerId newState oldState dir)
+| if (eql (curPos playerId newState) (curPos playerId oldState))
+  | barCat [b#{** ouch **}]
+| barCat [b#{** moved } dir b#{ **}]
+
+= (invalid state)
+[state b#{invalid command (h for help)}]
+
+= (filterBy property value pair)
+@ propInPair | tabGet (idx 1 pair) property
+| if (eql value propInPair)
+  (idx 0 pair)
+0
+
+= (filterByRoomId roomId pair)
+| filterBy b#roomId roomId pair
+
+= (filterByPlayerId playerId pair)
+| filterBy b#playerId playerId pair
+
+= (getItemIds roomId state)
+| filter neq-0
+| map (filterByRoomId roomId)
+| tabToPairs
+| stateGet b#itemLocations state
+
+= (getInventoryIds playerId state)
+| filter neq-0
+| map (filterByPlayerId playerId)
+| tabToPairs
+| stateGet b#itemLocations state
+
+= (getPlayerIds roomId state)
+| filter neq-0
+| map (filterBy b#currentPosition roomId)
+| tabToPairs
+| stateGet b#players state
+
+= (filterItems itemIds state)
+| tabFromPairs
+| map (x & [x (tabGet (stateGet b#items state) x)]) itemIds
+
+= (filterPlayers playerIds state)
+| tabFromPairs
+| map (x & [x (tabGet (stateGet b#players state) x)]) playerIds
+
+; only get the 'look' of each item in an item map
+> Tab > Row
+= (itemLooks items)
+| tabGetValsOfKey items b#look
+
+; only get the 'name' of each player in a player map
+> Tab > Row
+= (playerNames playersT)
+| tabGetValsOfKey playersT b#name
+
+; Get an ID-prepended pairs list - for selecting by identifier
+> List > Row Pairs
+= (enumerateThings thingList)
+; start at 1
+@ ids | map inc | gen (len | thingList) id
+| zip ids thingList
+
+= (inventoryMsg playerId state)
+@ itemIds | getInventoryIds playerId state
+@ items | filterItems itemIds state
+@ enumerated | enumerateThings | itemLooks items
+@ printable | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumerated
+@ itemPreamble |
+               , b#{you are carrying:}
+                 b#{}
+                 b#{id   item}
+                 b#{------------}
+| if (len itemIds)
+  | barCat | intersperse barNewline (cat [itemPreamble printable])
+b#{your inventory is empty}
+
+= (lookMsg playerId roomId state)
+@ roomDesc | [(tabGet (roomGet roomId state) b#desc)]
+@ otherPIds | filter (neq playerId) | getPlayerIds roomId state
+@ players | filterPlayers otherPIds state
+@ enumeratedPlayers | enumerateThings | playerNames players
+; | trk [%ep enumeratedPlayers]
+@ itemIds | getItemIds roomId state ; row of ids
+@ items | filterItems itemIds state ; filtered map
+@ enumerated | enumerateThings | itemLooks items
+@ playerPreamble [b#{players here: }]
+@ printablePlayers | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumeratedPlayers
+@ printableEnumerated | map (x & (barCat [(natBar | showNat (idx 0 x)) b#{ - } (idx 1 x)])) enumerated
+@ itemPreamble |
+               , b#{things here:}
+                 b#{}
+                 b#{id   item}
+                 b#{------------}
+| if | and (len otherPIds) (len itemIds)
+  | barCat | intersperse barNewline (cat [roomDesc playerPreamble printablePlayers b#{} itemPreamble printableEnumerated])
+| if (len otherPIds)
+  | barCat | intersperse barNewline (cat [roomDesc playerPreamble printablePlayers])
+| if (len itemIds)
+  | barCat | intersperse barNewline (cat [roomDesc itemPreamble printableEnumerated])
+| barCat | intersperse barNewline (cat [roomDesc [b#{there is nothing here}]])
+
+= (helpMsg state)
+| barCat
+| intersperse barNewline
+  , b#{++ Command Help ++}
+    b#{==================}
+    b#{}
+    b#{ - Help: h (this command)}
+    b#{ - Moving: n e s w (to move north, east, south, west)}
+    b#{ - Inventory: i (will return a list of things with ids for further interaction)}
+    b#{ - Look Around: l (will return a list of things with ids for further interaction)}
+    b#{ - Inspect Things: i <ID> (ID of thing from "look")}
+    b#{ - Get Things: get <ID> (ID of thing from "look")}
+    b#{ - Drop Things: drop <ID> (ID of thing from "inventory")}
+    b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
+    b#{ - Create Items: make <name> * <longer description> (the space around "*" is important)}
+
+> Bar > Nat > (Nat, Bar)
+= (handleSingleCmd playerId cmd state)
+; | trk [%handlingSingle]
+| if (has cmd [b#n b#e b#s b#w])
+  ; | trk [%cmdState state]
+  @ newRoomId | go playerId cmd state
+  ; | trk [%rid newRoomId]
+  @ newState | movePlayer playerId newRoomId state
+  ; | trk [%newS newState]
+  @ msg | barCat | intersperse barNewline [(message playerId newState state cmd) (lookMsg playerId newRoomId newState)]
+  [newState msg]
+| if (eql cmd b#{i})
+  [state (inventoryMsg playerId state)]
+| if (eql cmd b#{l})
+  [state (lookMsg playerId (curPos playerId state) state)]
+| if (eql cmd b#{h})
+  ; | trk [%gettinghelp]
+  [state (helpMsg state)]
+| invalid state
+
+= (getItemIdFromEnumerated enumeratedId roomId state)
+; | trk [%gettingEnumerated enumeratedId]
+@ itemIds | getItemIds roomId state
+; | trk [%itemIds itemIds]
+; the list of enuemrated items will always correspond to the items in the room:
+| get itemIds (dec enumeratedId)
+
+= (getInventoryIdFromEnumerated enumeratedId playerId state)
+; | trk [%gettingEnumerated enumeratedId]
+@ itemIds | getInventoryIds playerId state
+; | trk [%itemIds itemIds]
+; the list of enuemrated items will always correspond to the items in the inventory:
+| get itemIds (dec enumeratedId)
+
+=?= 3
+  ; the second item in room 2
+  | getItemIdFromEnumerated 2 2 gis
+
+=?= 2
+  ; the first item in room 2
+  | getItemIdFromEnumerated 1 2 gis
+
+=?= 1
+  | getItemIdFromEnumerated 1 1 gis
+
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (takeItemId playerId enumeratedId roomId state)
+@ itemId | getItemIdFromEnumerated enumeratedId roomId state
+; | trk [%itemId itemId]
+@ item | itemGet itemId state
+@ newState | itemLocationSetPlayer itemId playerId state
+@ nullMsg | b#{** that's not something to get **}
+@ msg | barCat [b#{** you got } (tabGet item b#look) b#{ **}]
+| if itemId
+  [newState msg]
+[newState nullMsg]
+
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (dropItemId playerId enumeratedId roomId state)
+@ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
+; | trk [%itemId itemId]
+@ item | itemGet itemId state
+@ newState | itemLocationSetRoom itemId roomId state
+@ nullMsg | b#{** that's not something to drop **}
+@ msg | barCat [b#{** you dropped } (tabGet item b#look) b#{ **}]
+| if itemId
+  [newState msg]
+[newState nullMsg]
+
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (inspectItem playerId enumeratedId roomId state)
+@ itemId | getItemIdFromEnumerated enumeratedId roomId state
+@ item | itemGet itemId state
+@ nullMsg | b#{** that's not something to inspect **}
+@ msg | barCat [b#{** inspecting } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+| if itemId
+  [state msg]
+[state nullMsg]
+
+> PlayerId > EnumID > RoomID > State > (State, Msg)
+= (adoreItem playerId enumeratedId state)
+@ itemId | getInventoryIdFromEnumerated enumeratedId playerId state
+; | trk [%itemId itemId]
+@ item | itemGet itemId state
+@ nullMsg | b#{** that's not something to adore **}
+@ msg | barCat [b#{** adoring } (tabGet item b#look) b#{: } (tabGet item b#desc)]
+| if itemId
+  [state msg]
+[state nullMsg]
+
+= (playerYell playerId comment state)
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+@ oldYell | tabGet state b#yell
+@ newYell | weld oldYell [[name comment]]
+; | trk [%xoldState state]
+; | trk [%xnewState (tabIns b#yell newYell state)]
+@ newState | tabIns b#yell newYell state
+[newState (barCat [b#{** } name b#{ said } comment])]
+
+= (createItem playerId cmdRow state)
+; cmdRow will be a row of all space-separated entry (without "make")
+@ look | barCat | intersperse b#{ } | listToRow | listTakeWhile (neq b#{*}) | listFromRow cmdRow
+; | trk [%xxxlook look]
+@ desc | barCat | intersperse b#{ } | drop 1 | listToRow | listDropWhile (neq b#{*}) | listFromRow cmdRow
+; | trk [%xxxdesc desc]
+; | trk [%xxxcmdRow cmdRow]
+@ oldItems | tabGet state b#items
+@ nextItemId | inc | last | tabKeysRow oldItems
+@ newItem | tabFromPairs [[b#look look] [b#desc desc]]
+; | trk [%new newItem]
+@ newItems | tabIns nextItemId newItem oldItems
+; | trk [%newItemState newItems]
+@ newState | tabIns b#items newItems state
+; | trk [%newState newState]
+@ oldLocations | tabGet state b#itemLocations
+@ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+; | trk [%newItemLoc newItemLoc]
+@ newLocations | tabIns nextItemId newItemLoc oldLocations
+; | trk [%newLocs newLocations]
+@ newState | tabIns b#itemLocations newLocations newState
+; | trk [%finalState newState]
+@ players | tabGet state b#players
+@ player | tabGet players playerId
+@ name | tabGet player b#name
+[newState (barCat [b#{** } name b#{ created: } look])]
+
+= (handleDuoCmd playerId cmd target state)
+; target will be a list of remainder without command
+; | trk [%handlingDuo cmd target]
+@ trgNat | fromSome 0 (parseNat (idx 0 target))
+| if (eql cmd b#{act})
+  | actingPlayerSet trgNat state
+| if (eql cmd b#{get})
+  | takeItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{y})
+  ; | trk [%target target]
+  @ comment | barCat
+            | intersperse b#{ } | target
+  ; | trk [%comment comment]
+  | playerYell playerId comment state
+| if (eql cmd b#{drop})
+  | dropItemId playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{i})
+  | inspectItem playerId trgNat (curPos playerId state) state
+| if (eql cmd b#{make})
+  | createItem playerId target state
+| if (eql cmd b#{a})
+  | adoreItem playerId trgNat state
+| invalid state
+
+; return [state msg]
+> PlayerID > Input > State > (State, Message)
+= (commandDo input state)
+| trk [%randomMap randomMap]
+@ playerId | tabGet state b#actingId
+; | trk [%cmdo input]
+@ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input
+| if (eql 1 | len cmd)
+* handleSingleCmd playerId (idx 0 cmd) state
+* handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
+
+= (tick state input)
+@ [changed msg] | commandDo input state
+; | trk [%changed changed]
+@ newState | changed
+@ playerId | tabGet newState b#actingId
+| (print playerId newState msg, tick newState)
+
+= main | tick gis
