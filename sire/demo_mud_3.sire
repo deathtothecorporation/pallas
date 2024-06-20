@@ -178,19 +178,6 @@
 
 ;;;; random map generator
 
-;def fill_row(map_grid, rooms, tile_id, x, y, width, size):
-;    if width == 0 or x >= size or y >= size:
-;        return map_grid, rooms, tile_id
-;    map_grid[y][x] = tile_id
-;    rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
-;    return fill_row(map_grid, rooms, tile_id + 1, x + 1, y, width - 1, size)
-;
-;def fill_area(map_grid, rooms, tile_id, x, y, width, height, size):
-;    if height == 0:
-;        return map_grid, rooms, tile_id
-;    map_grid, rooms, tile_id = fill_row(map_grid, rooms, tile_id, x, y, width, size)
-;    return fill_area(map_grid, rooms, tile_id, x, y + 1, width, height - 1, size)
-
 = (insertAt i n row)
 @ h | idx 0 (splitAt i row)
 @ t | idx 1 (splitAt i row)
@@ -199,30 +186,20 @@
 | weld h t
 
 = (fillRow grid rooms tileId x y width size)
-; | trk [%xxxFillRow grid tileId x y width size]
+; Given a row, in the grid, fill it with tiles in a zone
 | if | or (eql width 0) | or (gte x size) (gte y size)
-  | trk [%fillIFD]
   [grid rooms tileId]
-; | trk [%xxxfillrowGridTileId tileId]
-; | trk [%xxxfillrowGrid grid]
-; | trk [%xxxfillrowGridY y]
 @ gridRow | (idx y grid)
-; | trk [%xxxfillRowGridRow gridRow]
 @ gridRow | insertAt x tileId gridRow
-; | trk [%xxxfillRowGridRowUpdated gridRow]
-; grid[y][x] = tileId
 @ grid | insertAt y gridRow grid
-; | trk [%xxxfillRowGridUpdated grid]
 ; rooms[tileId] = {"exits": [0, 0, 0, 0], "description": ""}
 @ rooms | emptyTab ; TODO: set tileId to default tile thing above.
-| trk [%xxxFillRowRecurring]
 | fillRow grid rooms (inc tileId) (inc x) y (dec width) size
 
 = (fillArea grid rooms tileId x y width height size)
-| trk [%xxxFillArea grid]
+; For a room blueprint, fill rows appropriately
 | if (eql height 0)
   [grid rooms tileId]
-| trk [%xxxFillRecurring]
 @ [grid rooms tileId] | fillRow grid rooms tileId x y width size
 | fillArea grid rooms tileId x (inc y) width (dec height) size
 
@@ -233,29 +210,18 @@
 | add (mod n range) min
 
 = (generateAreas grid rooms tileId areaCount size currentArea seed)
-| trk [%xxxAreas]
-; TOOD: randomness is fake here..
+; For the number of areas we want, create some rectangle blueprints
+; and then fill the grid with them.
+; TOOD: randomness is sorta fake here..
 | if (eql currentArea areaCount)
-  | trk [%generateAreasDone %curr currentArea %count areaCount]
-  | trk [%grid grid]
-  | trk [%rooms rooms]
   [grid rooms tileId]
-| trk [%xxxgenerateAreasRecurring]
 @ areaX | getRand 1 (sub size 2) seed
 @ areaY | getRand 1 (sub size 2) (mul 2 seed) ; nudge it...?
 @ areaW | getRand 3 10 seed       ; room size
 @ areaH | getRand 3 9 (mul 3 seed) ; room size
-| trk [%xywh areaX areaY areaW areaH]
 @ [grid rooms tileId] | fillArea grid rooms tileId areaX areaY areaW areaH size
 | generateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
 
-
-;= initialRooms
-;| tabFromPairs
-;++  , 1 ; room ID
-;    | tabFromPairs
-;    , [b#exits [8 7 3 0]]
-;      [b#desc b#{it's damp and sticky}]
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
@@ -265,12 +231,17 @@
 | trk [%xxxGenerating]
 ; @ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
 ;[grid rooms tileId]
+; the below is the same:
 | generateAreas initialMap initialRooms tileId areaCount size curArea seed
 
-= randomMap | generateMap 43 9 3
+= randomMap | generateMap 43 15 3
                           ; size
                              ; room count
                                ; entropy seed
+
+; if you make the room count really big, you get larger, organic-looking spaces.
+; TODO: consider passing in the room size min/max
+; TODO: non-rectangular rooms....?
 
 ;;;; end random map generator
 
