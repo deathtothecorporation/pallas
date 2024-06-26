@@ -1,7 +1,6 @@
 #### demo_mud_3 <- prelude
 
-; stack run plunder save .seed/mud.seed sire/demo_mud_3.sire
-; stack run plunder repl .seed/mud.seed
+; stack run plunder save .seed/mud.seed sire/demo_mud_3.sire && stack run plunder repl .seed/mud.seed
 
 :| sire
 :| gen
@@ -222,6 +221,76 @@
 @ [grid rooms tileId] | fillArea grid rooms tileId areaX areaY areaW areaH size
 | generateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
 
+= (createHorizontalCorridor grid rooms tileId startX endX y)
+| trk %xxxcreateHoriz
+| if (eql startX endX)
+  [grid rooms tileId]
+; map_grid[y][start_x] = tile_id
+@ gridRow | (idx y grid)
+@ gridRow | insertAt startX tileId gridRow
+@ grid | insertAt y gridRow grid
+; TODO:
+; rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
+@ newStartX | if (lth startX endX) (inc startX) (dec startX)
+; return create_horizontal_corridor(map_grid, rooms, tile_id + 1, start_x + (1 if start_x < end_x else -1), end_x, y)
+| createHorizontalCorridor grid rooms (inc tileId) newStartX endX y
+[grid rooms tileId]
+
+= (createVerticalCorridor grid rooms tileId startX startY endY x)
+| trk %xxxcreateVert
+| if (eql startY endY)
+  [grid rooms tileId]
+@ gridRow | (idx startY grid)
+@ gridRow | insertAt x tileId gridRow
+@ grid | insertAt startY gridRow grid
+; TODO:
+; rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
+@ newStartY | if (lth startY endY) (inc startY) (dec startY)
+| createVerticalCorridor grid rooms (inc tileId) newStartY endY x
+
+= (findNonZeroTile grid size seed)
+| trk [%yyyfindNonZeroGrid grid]
+| trk [%gridBit (idx 5 grid)]
+| trk %xxxfindNonzero
+@ x | getRand 1 size seed
+@ y | getRand 1 size (mul 2 seed)
+@ gridRow | (idx y grid)
+| trk [%gridRow (idx y grid)]
+@ seek | (idx x gridRow)
+| trk [%xxxX x]
+| trk [%xxxY y]
+| trk [%xxxSeek seek]
+| if (neq seek 0)
+  | trk [%xxxSeekFound seek]
+  [x y]
+| findNonZeroTile grid size (inc seed)
+
+= (findDifferentNonZeroTile grid size startX startY seed)
+| trk %xxxfindDifferentNonzero
+| trk [%xxxfindDiffGridLen (len grid)]
+@ x | getRand 1 size seed
+@ y | getRand 1 size (mul 2 seed)
+@ gridRow | (idx y grid)
+@ seek | (idx x gridRow)
+| trk [%zzzDifX x]
+| trk [%zzzDifY y]
+| trk [%zzzDifSeek seek]
+| if | and (neq seek 0) (or (neq x startX) (neq y startY))
+  [x y]
+| findDifferentNonZeroTile grid size startX startY (inc seed)
+
+= (connectAreas grid rooms tileId areaCount size currentConnection seed)
+| trk %xxxConnectingAreas
+| trk [%yyyCAGrid grid]
+| if (eql currentConnection (dec areaCount))
+  | trk %xxxDoneConnectingAreas
+  [grid rooms tileId]
+@ [startX startY] | findNonZeroTile grid size seed
+@ [endX endY] | findDifferentNonZeroTile grid size startX startY seed
+@ [grid rooms tileId] | createHorizontalCorridor grid rooms tileId startX endX startY
+@ [grid rooms tileId] | createVerticalCorridor grid rooms tileId startY endY endX
+; [grid rooms tileId] ; TODO short-circuit
+| connectAreas grid rooms tileId areaCount size (inc currentConnection) (inc seed)
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
@@ -229,12 +298,12 @@
 @ tileId | 1
 @ curArea | 0
 | trk [%xxxGenerating]
-; @ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
-;[grid rooms tileId]
-; the below is the same:
-| generateAreas initialMap initialRooms tileId areaCount size curArea seed
+@ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
+| trk [%yyygmGrid grid]
+@ [grid rooms tileId] | connectAreas grid rooms tileId areaCount size curArea seed
+[grid rooms tileId]
 
-= randomMap | generateMap 43 15 3
+= randomMap | generateMap 43 5 4
                           ; size
                              ; room count
                                ; entropy seed
