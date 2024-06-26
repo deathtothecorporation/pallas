@@ -209,7 +209,7 @@
 @ range | inc (sub max min)
 | add (mod n range) min
 
-= (generateAreas grid rooms tileId areaCount size currentArea seed)
+= (oldGenerateAreas grid rooms tileId areaCount size currentArea seed)
 ; For the number of areas we want, create some rectangle blueprints
 ; and then fill the grid with them.
 ; TOOD: randomness is sorta fake here..
@@ -220,8 +220,159 @@
 @ areaW | getRand 3 10 seed       ; room size
 @ areaH | getRand 3 9 (mul 3 seed) ; room size
 @ [grid rooms tileId] | fillArea grid rooms tileId areaX areaY areaW areaH size
-| generateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
+| oldGenerateAreas grid rooms tileId areaCount size (inc currentArea) (inc seed)
 
+= (updateGrid grid x y tileId)
+@ gridRow | (idx y grid)
+@ gridRow | insertAt x tileId gridRow
+@ grid | insertAt y gridRow grid
+grid
+
+= (generateAreas grid areaCount size seed)
+; For the number of areas we want, create some rectangle blueprints
+; and then fill the grid with them.
+@ areas | []
+@ rooms | emptyTab
+@ nextTileId | 1
+;
+; loop to create some number of areas
+: i < foreach (gen (dec areaCount) id)
+; set up area coordinates
+@ areaX | getRand 1 (sub size 2) seed
+@ areaY | getRand 1 (sub size 2) (mul 2 seed) ; nudge it...?
+@ areaW | getRand 3 10 seed        ; room size
+@ areaH | getRand 3 9 (mul 3 seed) ; room size
+@ area  | []
+@ yMin  | areaY
+@ yMax  | (min (add areaY areaH) (dec size)) ; height, constrained to avail grid
+@ yRange | filter (lte yMin) | gen yMax id   ; y-coords of area not exceeding grid
+;
+; loop over y coordinates of this area
+: y < foreach yRange
+@ xMin  | areaX
+@ xMax  | (min (add areaX areaW) (dec size)) ; width, constrained to avail grid
+@ xRange | filter (lte xMin) | gen xMax id   ; x-coords of area not exceeding grid
+;
+; loop over x coordinates of area
+: x < foreach xRange
+@ grid | updateGrid x y nextTileId ;....
+@ area | weld area [x y]           ;......
+@ nextTileId | inc nextTileId      ;........
+; ...oh wait, this doesn't work without recursion...
+@ [grid rooms nextTileId] | fillArea grid rooms nextTileId areaX areaY areaW areaH size
+[grid rooms nextTileId]
+
+;; bfs example
+
+= (createNewPaths graph node path visited)
+@ neighbors | tabGet graph node
+@ neighbors | if (eql 0 neighbors) [] neighbors
+: n < foreach neighbors
+| if (not | has n visited)
+  | weld path [n]
+[]
+
+
+= (updateVisited visited newPaths)
+; get the last/new node from each path as a set
+@ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
+| setUnion pathsSet visited
+
+= (bfsRecurse g end q v)
+| if | eql 0 (len q)
+  []
+@ path | idx 0 q
+@ node | idx (dec | len path) path ; last item
+| if (eql node end)
+  path
+@ newPaths | createNewPaths g node path v
+@ newVistd | updateVisited v newPaths
+@ newQueue | weld (drop 1 q) newPaths
+| if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
+  []
+| bfsRecurse g end newQueue newVistd
+
+= (shortest graph start end)
+| if (or (not | tabHas end graph) (not | tabHas start graph))
+  []
+@ initialQ | [[start]]
+@ initialV | setFromRow [start]
+| bfsRecurse graph end initialQ initialV
+
+; adjacency list
+= bfsGraph
+| tabFromPairs
+++  , b#a [b#b b#c]
+++  , b#b [b#a b#d b#e]
+++  , b#c [b#a b#f]
+++  , b#d [b#b]
+++  , b#e [b#b b#f]
+++  , b#f [b#c b#e]
+
+;     A
+;    / \
+;   /   \
+;  B     C
+; / \     \
+; |  \     |
+; D   E----F
+
+=?= (shortest bfsGraph b#a b#f)
+  | [b#a b#c b#f]
+
+=?= (shortest bfsGraph b#a b#e)
+  | [b#a b#b b#e]
+
+=?= (shortest bfsGraph b#d b#f)
+  | [b#d b#b b#e b#f]
+
+=?= (shortest bfsGraph b#a b#a)
+  | [b#a]
+
+=?= (shortest bfsGraph b#a b#g)
+  | [] ; there is no "g" in the graph
+
+=?= (shortest bfsGraph b#g b#a)
+  | [] ; there is no "g" in the graph
+
+=?= (shortest bfsGraph b#g b#g)
+  | [] ; there is no "g" in the graph
+
+;;;
+
+= (connectAreas grid rooms tileId areaCount size)
+[grid rooms tileId]
+
+; def connect_areas(grid, rooms, tile_id, areas, size):
+;     return reduce(
+;         connect_area_pair,
+;         zip(areas, areas[1:]),
+;         (grid, rooms, tile_id)
+;     )
+;
+; def connect_area_pair(state, area_pair):
+;     grid, rooms, tile_id = state
+;     start_area, end_area = area_pair
+;     new_grid, new_rooms, new_tile_id, path = bfs_connect(grid, rooms, tile_id, start_area, end_area, size)
+;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
+;
+; def bfs_connect(grid, rooms, tile_id, start_area, end_area, size):
+;     # ... (same as before)
+;
+; def create_hallway(grid, rooms, tile_id, path):
+;     return reduce(
+;         process_tile,
+;         path,
+;         (grid, rooms, tile_id)
+;     )
+;
+; def process_tile(state, coord):
+;     grid, rooms, tile_id = state
+;     if grid[coord[1]][coord[0]] == 0:
+;         new_grid = update_grid(grid, coord[0], coord[1], tile_id)
+;         new_rooms = rooms | {tile_id: {"exits": (0, 0, 0, 0), "desc": ""}}
+;         return new_grid, new_rooms, tile_id + 1
+;     return grid, rooms, tile_id
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
@@ -229,10 +380,11 @@
 @ tileId | 1
 @ curArea | 0
 | trk [%xxxGenerating]
-; @ [grid rooms tileId] | generateAreas initialMap initialRooms tileId areaCount size curArea seed
-;[grid rooms tileId]
+@ [grid rooms tileId] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea seed
+@ [grid rooms tileId] | connectAreas grid rooms tileId areaCount size
+[grid rooms tileId]
 ; the below is the same:
-| generateAreas initialMap initialRooms tileId areaCount size curArea seed
+; | generateAreas initialMap initialRooms tileId areaCount size curArea seed
 
 = randomMap | generateMap 43 15 3
                           ; size
