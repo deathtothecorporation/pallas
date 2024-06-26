@@ -272,7 +272,6 @@ grid
   | weld path [n]
 []
 
-
 = (updateVisited visited newPaths)
 ; get the last/new node from each path as a set
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
@@ -357,7 +356,25 @@ grid
 ;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
 ;
 ; def bfs_connect(grid, rooms, tile_id, start_area, end_area, size):
-;     # ... (same as before)
+;     start = random.choice(start_area)
+;     queue = deque([(start, [])])
+;     visited = set()
+;
+;     while queue:
+;         (x, y), path = queue.popleft()
+;         if (x, y) in visited:
+;             continue
+;         visited.add((x, y))
+;
+;         if (x, y) in end_area:
+;             return grid, rooms, tile_id, path
+;
+;         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+;             nx, ny = x + dx, y + dy
+;             if 0 <= nx < size and 0 <= ny < size:
+;                 queue.append(((nx, ny), path + [(nx, ny)]))
+;
+;     return grid, rooms, tile_id, []  # If no path found
 ;
 ; def create_hallway(grid, rooms, tile_id, path):
 ;     return reduce(
@@ -365,14 +382,42 @@ grid
 ;         path,
 ;         (grid, rooms, tile_id)
 ;     )
-;
-; def process_tile(state, coord):
-;     grid, rooms, tile_id = state
-;     if grid[coord[1]][coord[0]] == 0:
-;         new_grid = update_grid(grid, coord[0], coord[1], tile_id)
-;         new_rooms = rooms | {tile_id: {"exits": (0, 0, 0, 0), "desc": ""}}
-;         return new_grid, new_rooms, tile_id + 1
-;     return grid, rooms, tile_id
+
+= (processTile grid rooms tileId coord)
+@ x | idx 0 coord
+@ y | idx 1 coord
+| trk (idx x (idx y grid))
+| if | eql 0 (idx x (idx y grid))
+  | trk [%xxeqlZero]
+  @ grid  | updateGrid grid x y tileId
+  ; TODO: update rooms properly
+  @ rooms | tabIns tileId (tabFromPairs [[b#desc b#hello]]) rooms
+  [grid rooms tileId]
+| trk [%xxNEQzero]
+[grid rooms tileId]
+
+= tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
+= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId | 2
+= tCoord  | [0 0]
+= newRooms | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])] [2 (tabFromPairs [[b#desc b#hello]])]]
+
+= ptResult
+, [[2 0 0] [0 1 0] [0 0 0]]
+  newRooms
+  2
+
+=?= (processTile tGrid tRooms tTileId tCoord)
+  | ptResult
+
+= tCoord | [1 2]
+= ptResult
+, [[0 0 0] [0 1 0] [0 2 0]]
+  newRooms
+  2
+
+=?= (processTile tGrid tRooms tTileId tCoord)
+  | ptResult
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
