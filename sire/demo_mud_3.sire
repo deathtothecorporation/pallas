@@ -262,7 +262,8 @@ grid
 @ [grid rooms nextTileId] | fillArea grid rooms nextTileId areaX areaY areaW areaH size
 [grid rooms nextTileId]
 
-;; bfs example
+
+;;;;;;;; bfs example ;;;;;;
 
 = (createNewPaths graph node path visited)
 @ neighbors | tabGet graph node
@@ -337,24 +338,95 @@ grid
 =?= (shortest bfsGraph b#g b#g)
   | [] ; there is no "g" in the graph
 
-;;;
+;;;;;;;;;;;;;
 
-= (connectAreas grid rooms tileId areaCount size)
+= (processTile args coord)
+@ [grid rooms tileId] | args
+@ x | idx 0 coord
+@ y | idx 1 coord
+| if | eql 0 (idx x (idx y grid))
+  @ grid  | updateGrid grid x y tileId
+  ; TODO: update rooms properly
+  @ rooms | tabIns tileId (tabFromPairs [[b#desc b#hello]]) rooms
+  [grid rooms (inc tileId)]
 [grid rooms tileId]
 
-; def connect_areas(grid, rooms, tile_id, areas, size):
-;     return reduce(
-;         connect_area_pair,
-;         zip(areas, areas[1:]),
-;         (grid, rooms, tile_id)
-;     )
-;
-; def connect_area_pair(state, area_pair):
-;     grid, rooms, tile_id = state
-;     start_area, end_area = area_pair
-;     new_grid, new_rooms, new_tile_id, path = bfs_connect(grid, rooms, tile_id, start_area, end_area, size)
-;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
-;
+= tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
+= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId | 2
+= tCoord  | [0 0]
+= newRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+
+= ptResult
+, [[2 0 0] [0 1 0] [0 0 0]]
+  newRooms
+  3
+
+=?= (processTile [tGrid tRooms tTileId] tCoord)
+  | ptResult
+
+= tCoord | [1 2]
+= ptResult
+, [[0 0 0] [0 1 0] [0 2 0]]
+  newRooms
+  3
+
+=?= (processTile [tGrid tRooms tTileId] tCoord)
+  | ptResult
+
+
+= (createHallway grid rooms tileId path)
+; continuously pass new coords to processTile's arg list
+| foldl processTile [grid rooms tileId] path
+
+= tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
+= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId | 2
+= tCoord  | [0 0]
+= newRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+  [3 (tabFromPairs [[b#desc b#hello]])]
+  [4 (tabFromPairs [[b#desc b#hello]])]
+
+= tPath [[0 0] [1 0] [2 0]]
+= chResult
+, [[2 3 4] [0 1 0] [0 0 0]]
+  newRooms
+  5
+
+; horizontal hallway
+=?= (createHallway tGrid tRooms tTileId tPath)
+  | chResult
+
+= tPath [[0 0] [0 1] [0 2]]
+= chResult
+, [[2 0 0] [3 1 0] [4 0 0]]
+  newRooms
+  5
+
+; vertical hallway
+=?= (createHallway tGrid tRooms tTileId tPath)
+  | chResult
+
+= tGrid   | [[0 1 0] [0 0 0] [0 0 0]]
+= tPath [[0 0] [1 1] [2 2]]
+= chResult
+, [[2 1 0] [0 3 0] [0 0 4]]
+  newRooms
+  5
+
+; diagonal hallway!
+=?= (createHallway tGrid tRooms tTileId tPath)
+  | chResult
+
+= (bfsConnect grid rooms tileId startArea endArea size)
+[grid rooms tileId []]
+
 ; def bfs_connect(grid, rooms, tile_id, start_area, end_area, size):
 ;     start = random.choice(start_area)
 ;     queue = deque([(start, [])])
@@ -375,49 +447,99 @@ grid
 ;                 queue.append(((nx, ny), path + [(nx, ny)]))
 ;
 ;     return grid, rooms, tile_id, []  # If no path found
+
+; TODO: bfs_connect input
 ;
-; def create_hallway(grid, rooms, tile_id, path):
+; grid = [[1, 0, 0],
+;         [0, 0, 0],
+;         [0, 0, 2]]
+; rooms = {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;          2: {"exits": (0, 0, 0, 0), "desc": ""}}
+; tile_id = 3
+; start_area = [(0, 0)]
+; end_area = [(2, 2)]
+; size = 3
+;
+; TODO: bfs_connect output
+;
+; (
+;     [[1, 3, 0],
+;      [0, 3, 0],
+;      [0, 3, 2]],
+;     {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;      2: {"exits": (0, 0, 0, 0), "desc": ""},
+;      3: {"exits": (0, 0, 0, 0), "desc": ""},
+;      4: {"exits": (0, 0, 0, 0), "desc": ""},
+;      5: {"exits": (0, 0, 0, 0), "desc": ""}},
+;     6,
+;     [(0, 1), (1, 1), (2, 1)]
+; )
+
+; def connect_area_pair(state, area_pair):
+;     grid, rooms, tile_id = state
+;     start_area, end_area = area_pair
+;     new_grid, new_rooms, new_tile_id, path = bfs_connect(grid, rooms, tile_id, start_area, end_area, size)
+;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
+;
+
+
+; TODO: connect_area_pair input:
+;
+; state = (
+;     [[1, 0, 0],
+;      [0, 0, 0],
+;      [0, 0, 2]],
+;     {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;      2: {"exits": (0, 0, 0, 0), "desc": ""}},
+;     3
+; )
+; area_pair = ([(0, 0)], [(2, 2)])
+; size = 3
+;
+; TODO: connect_area_pair output:
+;
+;(
+;    [[1, 3, 0],
+;     [0, 3, 0],
+;     [0, 3, 2]],
+;    {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;     2: {"exits": (0, 0, 0, 0), "desc": ""},
+;     3: {"exits": (0, 0, 0, 0), "desc": ""},
+;     4: {"exits": (0, 0, 0, 0), "desc": ""},
+;     5: {"exits": (0, 0, 0, 0), "desc": ""}},
+;    6
+;)
+
+; def connect_areas(grid, rooms, tile_id, areas, size):
 ;     return reduce(
-;         process_tile,
-;         path,
+;         connect_area_pair,
+;         zip(areas, areas[1:]),
 ;         (grid, rooms, tile_id)
 ;     )
+;
 
-= (processTile grid rooms tileId coord)
-@ x | idx 0 coord
-@ y | idx 1 coord
-| trk (idx x (idx y grid))
-| if | eql 0 (idx x (idx y grid))
-  | trk [%xxeqlZero]
-  @ grid  | updateGrid grid x y tileId
-  ; TODO: update rooms properly
-  @ rooms | tabIns tileId (tabFromPairs [[b#desc b#hello]]) rooms
-  [grid rooms tileId]
-| trk [%xxNEQzero]
-[grid rooms tileId]
-
-= tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
-= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
-= tTileId | 2
-= tCoord  | [0 0]
-= newRooms | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])] [2 (tabFromPairs [[b#desc b#hello]])]]
-
-= ptResult
-, [[2 0 0] [0 1 0] [0 0 0]]
-  newRooms
-  2
-
-=?= (processTile tGrid tRooms tTileId tCoord)
-  | ptResult
-
-= tCoord | [1 2]
-= ptResult
-, [[0 0 0] [0 1 0] [0 2 0]]
-  newRooms
-  2
-
-=?= (processTile tGrid tRooms tTileId tCoord)
-  | ptResult
+; TODO: connect_areas input:
+;
+; grid = [[1, 0, 0],
+;         [0, 0, 0],
+;         [0, 0, 2]]
+; rooms = {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;          2: {"exits": (0, 0, 0, 0), "desc": ""}}
+; tile_id = 3
+; areas = [[(0, 0)], [(2, 2)]]
+; size = 3
+;
+; (
+;    [[1, 3, 0],
+;     [0, 3, 0],
+;     [0, 3, 2]],
+;    {1: {"exits": (0, 0, 0, 0), "desc": ""},
+;     2: {"exits": (0, 0, 0, 0), "desc": ""},
+;     3: {"exits": (0, 0, 0, 0), "desc": ""},
+;     4: {"exits": (0, 0, 0, 0), "desc": ""},
+;     5: {"exits": (0, 0, 0, 0), "desc": ""}},
+;    6
+; )
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
@@ -426,7 +548,7 @@ grid
 @ curArea | 0
 | trk [%xxxGenerating]
 @ [grid rooms tileId] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea seed
-@ [grid rooms tileId] | connectAreas grid rooms tileId areaCount size
+; @ [grid rooms tileId] | connectAreas grid rooms tileId areaCount size
 [grid rooms tileId]
 ; the below is the same:
 ; | generateAreas initialMap initialRooms tileId areaCount size curArea seed
