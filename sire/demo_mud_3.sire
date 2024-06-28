@@ -741,19 +741,29 @@ fullPath
 | filter (x & (neq x item)) lst
 
 = (connectRandomAreas grid rooms tileId unconnectedAreas connectedAreas size seed)
+| trk [%remainingUnconnected (len unconnectedAreas)]
 | if (eql 0 | len unconnectedAreas)
   [grid rooms tileId connectedAreas]
 | if (eql 0 | len connectedAreas)
-  @ startArea | getRandomItem unconnectedAreas seed
+  @ startArea | getRandomItem unconnectedAreas (mul 5 seed)
   | connectRandomAreas grid rooms tileId (removeItem unconnectedAreas startArea) [startArea] size (inc seed)
-@ startArea | getRandomItem connectedAreas seed
-@ endArea | getRandomItem unconnectedAreas (inc seed)
+| if (eql 1 | len unconnectedAreas)
+  @ startArea | getRandomItem connectedAreas seed
+  @ endArea | idx 0 unconnectedAreas
+  | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
+  @ path | bfsConnect grid rooms tileId startArea endArea size (inc seed)
+  @ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+  [newGrid newRooms newTileId (weld connectedAreas [endArea])]
+@ startArea | getRandomItem connectedAreas (inc seed)
+@ endArea | getRandomItem unconnectedAreas (mul 2 seed)
 | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
 @ path | bfsConnect grid rooms tileId startArea endArea size (add seed 2)
 @ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
 | connectRandomAreas newGrid newRooms newTileId (removeItem unconnectedAreas endArea) (weld connectedAreas [endArea]) size (add seed 3)
 
 = (connectAreas grid rooms tileId areas size seed)
+| if (lte (len areas) 1)
+  [grid rooms tileId areas]
 | connectRandomAreas grid rooms tileId areas [] size seed
 
 
@@ -770,7 +780,13 @@ fullPath
 ; the below is the same:
 ; | generateAreas initialMap initialRooms tileId areaCount size curArea seed
 
-= randomMap | generateMap 15 3 999
+; TODOS:
+; - would be nice to add a "visualizer" with trks during path-finding
+;  - not only cool, but actually useful for debugging. which areas are being connected, the current path, etc.
+; - does it break when rooms are "inside each other"?
+; - need to make larger rooms without breaking all the tests.
+
+= randomMap | generateMap 30 3 9
                           ; size
                              ; room count
                                ; entropy seed
