@@ -323,7 +323,7 @@ grid
 
 ;;;;;;;; bfs example ;;;;;;
 
-= (createNewPaths graph node path visited)
+= (ecreateNewPaths graph node path visited)
 @ neighbors | tabGet graph node
 @ neighbors | if (eql 0 neighbors) [] neighbors
 : n < foreach neighbors
@@ -343,7 +343,7 @@ grid
 @ node | idx (dec | len path) path ; last item
 | if (eql node end)
   path
-@ newPaths | createNewPaths g node path v
+@ newPaths | ecreateNewPaths g node path v
 @ newVistd | updateVisited v newPaths
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
@@ -491,57 +491,95 @@ grid
 = (inBounds x y size)
 | and (gte x 0) | and (lth x size) | and (gte y 0) (lth y size)
 
+= (getDirectionCoords coords funcs)
+; This wacky thing applies functions to x and y coordinates.
+; It is used for exploring out into other directions, since we have to use
+; _Dec rather than adding -1
+@ [x y]         | coords
+@ [xFunc yFunc] | funcs
+@ nx | xFunc x
+@ ny | yFunc y
+[nx ny]
+
 = (createNewPaths grid size x y path visited)
-;| trk [%creatingNewPaths]
-;| trk [%x x]
-;| trk [%y y]
+| trk [%CRPInput path x y]
+| if (eql path [])
+  | trk [%CRPEmptyPath]
+  []
 | trk [%tryingPath path]
-;| trk [%visited visited]
+;         right    down     left     up
+@ cmd | [[inc id] [id inc] [dec id] [id dec]]
+@ c | [[x y] [x y] [x y] [x y]]
+@ z | zip c cmd
+;[[x y] [inc id]]
+;[[x y] [id inc]]
+;[[x y] [_Dec id]]
+;[[x y] [id _Dec]]
+@ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
+| trk [%newDirs]
+: [nx ny] < foreach newDirs
+| trk [%CRTest [[nx ny]]]
+| if (and (inBounds nx ny size) (not | has [nx ny] visited))
+  | trk [%CRNew [[nx ny]]]
+  | weld path [[nx ny]]
+[]
+
+
+= (ocreateNewPaths grid size x y path visited)
+| trk [%CRPInput path x y]
+| if (eql path [])
+  | trk [%CRPEmptyPath]
+  []
+| trk [%tryingPath path]
+; consider the end of the path our current position
 : [dx dy] < foreach [[0 1] [1 0] [0 -1] [-1 0]]
 @ nx | add x dx
 @ ny | add y dy
+| trk [%CRTest [[nx ny]]]
 | if (and (inBounds nx ny size) (not | has [nx ny] visited))
-  ;| trk [%nx nx]
-  ;| trk [%ny ny]
+  | trk [%CRNew [[nx ny]]]
   | weld path [[nx ny]]
 []
-; | map (n & weld path [n]) | flatten
 
 = (updateVisited visited newPaths)
+| trk [%updateVisisted]
+| trk [%visited visited]
+| trk [%newPaths newPaths]
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
-| setUnion pathsSet visited
+| setUnion pathsSet (setFromRow visited)
 
 = (bfsRecurse grid rooms tileId endArea q v size)
-; | trk [%bfsRecurse]
-;| trk [%q q]
-;| trk [%v v]
 | if | eql 0 (len q)
-  ;| trk [%bfsRecurse %lenQZero]
+  | trk [%BFSEmptyQ]
   []
 @ path | idx 0 q
+| if (eql path [])
+  | trk [%BFSEmptyPath]
+  | bfsRecurse grid rooms tileId endArea (drop 1 q) v size
 @ [x y] | idx (dec | len path) path
 | if (has [x y] endArea) ; if this tile is in the end area target
-  ;| trk [%bfsRecurse %endAreaHasXY] ; we're done
-  ;| trk [%xxxpath path]
   path
+| trk [%bfsRecurseVisited v]
 @ newPaths | createNewPaths grid size x y path v
 @ newVistd | updateVisited v newPaths
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
 ; | if (or (eql newQueue 0) (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q)))
-  | trk [%bfsRecurse %newPathsZeroAndQZero]
+  | trk [%bfsRecurseNoMorePaths]
   []
 | bfsRecurse grid rooms tileId endArea newQueue newVistd size
 
 ; returns a path.
 = (bfsConnect grid rooms tileId startArea endArea size seed)
-@ start | getRandomItem startArea seed
+@ start | getRandomItem startArea (inc seed)
+| trk [%bfsConnectStart start]
 ; changed when ithought it was broken but createNewPaths was just empty
 ;@ initialQ | [[start []]]
 ;@ initialV | setFromRow []
 @ initialQ | [[start]]
 @ initialV | setFromRow [start]
 @ fullPath | bfsRecurse grid rooms tileId endArea initialQ initialV size
+| trk [%bfsConnectResult fullPath]
 fullPath
 ; TODO: trying removing start and end from paths
 ;| slice fullPath 1 (dec | len fullPath)
@@ -560,11 +598,10 @@ fullPath
 = tSize      | 3
 = tSeed      | 12345
 
-= expectedPath | [[0 0] [0 1] [0 2] [1 2] [2 2]]
-; [0 1] [0 2] [1 2]
-; [1 x x]
-; [0 0 x]
-; [0 0 2]
+= expectedPath | [[0 0] [1 0] [2 0] [2 1] [2 2]]
+; [1 0 0]
+; [x 0 0]
+; [x x 2]
 = gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
 =?= gotPath
@@ -602,17 +639,16 @@ fullPath
 = tSize      | 3
 = tSeed      | 12345
 
-= expectedPath | [[0 1] [0 0] [1 0]]
-; [0 1] [0 0] [1 0]
-; [x x 2]
-; [x 0 0]
-; [1 0 0]
+= expectedPath | [[2 0] [2 1] [2 2] [1 2] [0 2]]
+; [0 0 2]
+; [0 0 x]
+; [1 x x]
 = gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
 ; TODO: higher numbers can't go to lower numbers maybe?
 ; FAILS. gets a [] path
-;=?= gotPath
-;  | expectedPath
+=?= gotPath
+  | expectedPath
 
 
 ; TODO: need to test actual areas. not just single points
@@ -661,15 +697,15 @@ fullPath
   [5 (tabFromPairs [[b#desc b#hello]])]
 
 ; Path ends up as:
-; [1 0 0]
-; [x 0 0]
-; [x x 2]
+; [1 x x]
+; [0 0 x]
+; [0 0 2]
 ; or
-; [1 0 0]
-; [3 0 0]
-; [4 5 2]
+; [1 3 4]
+; [0 0 5]
+; [0 0 2]
 = connectResult
-, [[1 0 0] [3 0 0] [4 5 2]]
+, [[1 3 4] [0 0 5] [0 0 2]]
   newRooms
   6
 
@@ -682,19 +718,22 @@ fullPath
   | connectResult
 
 = (connectAreas grid rooms tileId areas size seed)
-@ areaPairs | zip areas (drop 1 areas)
+@ areaPairs | zip areas areas
 | trk [%connectAreas areas]
 | trk [%areaPairs areaPairs]
 | foldl connectAreaPair size grid rooms tileId size seed areaPairs
 
 
 = tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
+; [1 0 0]
+; [0 0 0]
+; [0 0 2]
 = tRooms
 | tabFromPairs
 , [1 (tabFromPairs [[b#desc b#hello]])]
   [2 (tabFromPairs [[b#desc b#hello]])]
 
-= tTileId | 3
+= tTileId | 5
 = newRooms
 | tabFromPairs
 , [1 (tabFromPairs [[b#desc b#hello]])]
@@ -711,8 +750,9 @@ fullPath
   newRooms
   6
 
-;=?= (connectAreas tGrid tRooms tTileId [tStartArea tEndArea] tSize tSeed)
-;  | connectAreasResult
+; TODO:
+=?= (connectAreas tGrid tRooms tTileId [tStartArea tEndArea] tSize tSeed)
+  | connectAreasResult
 
 = (generateMap size areaCount seed)
 @ initialMap   | map (i & (gen size (i & 0))) (gen size (i & 0))
