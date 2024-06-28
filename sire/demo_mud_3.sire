@@ -42,6 +42,14 @@
 @ !acc (add (mul 10 acc) (sub c {0}))
 | go acc inc-ix
 
+= (flatten rows)
+@ head (fromSome listHead rows)
+@ tail (slice rows 1 (len rows))
+| ifNot (len tail)
+  head
+| weld head (flatten tail)
+
+
 = grid
 , [8 9 13 14]
   [1 7 2 10]
@@ -278,7 +286,7 @@ grid
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
 | setUnion pathsSet visited
 
-= (bfsRecurse g end q v)
+= (bfsRecurseT g end q v)
 | if | eql 0 (len q)
   []
 @ path | idx 0 q
@@ -290,14 +298,14 @@ grid
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
   []
-| bfsRecurse g end newQueue newVistd
+| bfsRecurseT g end newQueue newVistd
 
 = (shortest graph start end)
 | if (or (not | tabHas end graph) (not | tabHas start graph))
   []
 @ initialQ | [[start]]
 @ initialV | setFromRow [start]
-| bfsRecurse graph end initialQ initialV
+| bfsRecurseT graph end initialQ initialV
 
 ; adjacency list
 = bfsGraph
@@ -424,56 +432,116 @@ grid
 =?= (createHallway tGrid tRooms tTileId tPath)
   | chResult
 
-= (bfsConnect grid rooms tileId startArea endArea size)
-[grid rooms tileId []]
+;; bfs connect
 
-; def bfs_connect(grid, rooms, tile_id, start_area, end_area, size):
-;     start = random.choice(start_area)
-;     queue = deque([(start, [])])
-;     visited = set()
-;
-;     while queue:
-;         (x, y), path = queue.popleft()
-;         if (x, y) in visited:
-;             continue
-;         visited.add((x, y))
-;
-;         if (x, y) in end_area:
-;             return grid, rooms, tile_id, path
-;
-;         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-;             nx, ny = x + dx, y + dy
-;             if 0 <= nx < size and 0 <= ny < size:
-;                 queue.append(((nx, ny), path + [(nx, ny)]))
-;
-;     return grid, rooms, tile_id, []  # If no path found
+= (getRandomItem lst seed)
+@ i | getRand 0 (dec | len lst) seed
+| idx i lst
 
-; TODO: bfs_connect input
-;
-; grid = [[1, 0, 0],
-;         [0, 0, 0],
-;         [0, 0, 2]]
-; rooms = {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;          2: {"exits": (0, 0, 0, 0), "desc": ""}}
-; tile_id = 3
-; start_area = [(0, 0)]
-; end_area = [(2, 2)]
-; size = 3
-;
-; TODO: bfs_connect output
-;
-; (
-;     [[1, 3, 0],
-;      [0, 3, 0],
-;      [0, 3, 2]],
-;     {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;      2: {"exits": (0, 0, 0, 0), "desc": ""},
-;      3: {"exits": (0, 0, 0, 0), "desc": ""},
-;      4: {"exits": (0, 0, 0, 0), "desc": ""},
-;      5: {"exits": (0, 0, 0, 0), "desc": ""}},
-;     6,
-;     [(0, 1), (1, 1), (2, 1)]
-; )
+= (inBounds x y size)
+| and (gte x 0) | and (lth x size) | and (gte y 0) (lth y size)
+
+= (createNewPaths grid size x y path visited)
+| trk [%creatingNewPaths]
+| trk [%x x]
+| trk [%y y]
+| trk [%path path]
+| trk [%visited visited]
+: [dx dy] < foreach [[0 1] [1 0] [0 -1] [-1 0]]
+@ nx | add x dx
+@ ny | add y dy
+| if (and (inBounds nx ny size) (not | has [nx ny] visited))
+  | trk [%nx nx]
+  | trk [%ny ny]
+  | weld path [[nx ny]]
+[]
+; | map (n & weld path [n]) | flatten
+
+= (updateVisited visited newPaths)
+@ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
+| setUnion pathsSet visited
+
+; = (bfsRecurse grid rooms tileId endArea q v size)
+; | trk [%bfsRecurse]
+; | trk [%q q]
+; | trk [%v v]
+; | if | eql 0 (len q)
+;   | trk [%bfsRecurse %lenQZero]
+;   [grid rooms tileId []]
+; @ path | idx 0 q
+; @ [x y] | idx (dec | len path) path
+; | if (has [x y] endArea)
+;   | trk [%bfsRecurse %endAreaHasXY]
+;   [grid rooms tileId path]
+; @ newPaths | createNewPaths grid size x y path v
+; @ newVistd | updateVisited v newPaths
+; @ newQueue | weld (drop 1 q) newPaths
+; | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
+;   | trk [%bfsRecurse %newPathsZeroAndQZero]
+;   [grid rooms tileId []]
+; | trk [%bfsRecurse %recursingDotDotDot]
+; | bfsRecurse grid rooms tileId endArea newQueue newVistd size
+
+= (bfsRecurse grid rooms tileId endArea q v size)
+| trk [%bfsRecurse]
+| trk [%q q]
+| trk [%v v]
+| if | eql 0 (len q)
+  | trk [%bfsRecurse %lenQZero]
+  []
+@ path | idx 0 q
+@ [x y] | idx (dec | len path) path
+| if (has [x y] endArea) ; if this tile is in the end area target
+  | trk [%bfsRecurse %endAreaHasXY] ; we're done
+  | trk [%xxxpath path]
+  path
+@ newPaths | createNewPaths grid size x y path v
+@ newVistd | updateVisited v newPaths
+@ newQueue | weld (drop 1 q) newPaths
+| if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
+  | trk [%bfsRecurse %newPathsZeroAndQZero]
+  []
+| trk [%bfsRecurse %recursingDotDotDot]
+| bfsRecurse grid rooms tileId endArea newQueue newVistd size
+
+; returns a path.
+= (bfsConnect grid rooms tileId startArea endArea size seed)
+@ start | getRandomItem startArea seed
+; changed when ithought it was broken but createNewPaths was just empty
+;@ initialQ | [[start []]]
+;@ initialV | setFromRow []
+@ initialQ | [[start]]
+@ initialV | setFromRow [start]
+; TODO: trying removing start and end from paths
+@ fullPath | bfsRecurse grid rooms tileId endArea initialQ initialV size
+| slice fullPath 1 (dec | len fullPath)
+
+
+;;; bfs connect test
+
+= tGrid      | [[1 0 0] [0 0 0] [0 0 2]]
+; [1 0 0]
+; [0 0 0]
+; [0 0 2]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[0 0]]
+= tEndArea   | [[2 2]]
+= tSize      | 3
+= tSeed      | 12345
+
+= expectedPath | [[0 1] [0 2] [1 2]]
+; [0 1] [0 2] [1 2]
+; [1 x x]
+; [0 0 x]
+; [0 0 2]
+= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+| trk [%gotPath gotPath]
+
+; TODO:
+=?= gotPath
+  | expectedPath
 
 ; def connect_area_pair(state, area_pair):
 ;     grid, rooms, tile_id = state
@@ -482,6 +550,31 @@ grid
 ;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
 ;
 
+= (connectAreaPair grid rooms tileId startArea endArea size seed)
+@ [grid rooms tileId path] | bfsConnect grid rooms tileId startArea endArea size seed
+| createHallway grid rooms tileId path
+
+= tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
+= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId | 2
+= tStart  | [0 0]
+= tEnd    | [2 2]
+= tSize   | 3
+= tSeed   | 12345
+= newRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+  [3 (tabFromPairs [[b#desc b#hello]])]
+  [4 (tabFromPairs [[b#desc b#hello]])]
+
+= connectResult
+, [[1 3 0] [0 4 0] [0 5 2]]
+  newRooms
+  5
+
+=?= (connectAreaPair tGrid tRooms tTileId tStart tEnd tSize tSeed)
+  | connectResult
 
 ; TODO: connect_area_pair input:
 ;
@@ -662,13 +755,6 @@ newState
 
 ;= (itemLocationSetRoom itemId roomId state)
 ;0
-
-= (flatten rows)
-@ head (fromSome listHead rows)
-@ tail (slice rows 1 (len rows))
-| ifNot (len tail)
-  head
-| weld head (flatten tail)
 
 = (flatGrid)
 | flatten grid
