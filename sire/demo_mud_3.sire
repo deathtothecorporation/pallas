@@ -443,16 +443,16 @@ grid
 
 = (createNewPaths grid size x y path visited)
 | trk [%creatingNewPaths]
-| trk [%x x]
-| trk [%y y]
+;| trk [%x x]
+;| trk [%y y]
 | trk [%path path]
-| trk [%visited visited]
+;| trk [%visited visited]
 : [dx dy] < foreach [[0 1] [1 0] [0 -1] [-1 0]]
 @ nx | add x dx
 @ ny | add y dy
 | if (and (inBounds nx ny size) (not | has [nx ny] visited))
-  | trk [%nx nx]
-  | trk [%ny ny]
+  ;| trk [%nx nx]
+  ;| trk [%ny ny]
   | weld path [[nx ny]]
 []
 ; | map (n & weld path [n]) | flatten
@@ -484,24 +484,24 @@ grid
 
 = (bfsRecurse grid rooms tileId endArea q v size)
 | trk [%bfsRecurse]
-| trk [%q q]
-| trk [%v v]
+;| trk [%q q]
+;| trk [%v v]
 | if | eql 0 (len q)
-  | trk [%bfsRecurse %lenQZero]
+  ;| trk [%bfsRecurse %lenQZero]
   []
 @ path | idx 0 q
 @ [x y] | idx (dec | len path) path
 | if (has [x y] endArea) ; if this tile is in the end area target
-  | trk [%bfsRecurse %endAreaHasXY] ; we're done
-  | trk [%xxxpath path]
+  ;| trk [%bfsRecurse %endAreaHasXY] ; we're done
+  ;| trk [%xxxpath path]
   path
 @ newPaths | createNewPaths grid size x y path v
 @ newVistd | updateVisited v newPaths
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
-  | trk [%bfsRecurse %newPathsZeroAndQZero]
+  ; | trk [%bfsRecurse %newPathsZeroAndQZero]
   []
-| trk [%bfsRecurse %recursingDotDotDot]
+;| trk [%bfsRecurse %recursingDotDotDot]
 | bfsRecurse grid rooms tileId endArea newQueue newVistd size
 
 ; returns a path.
@@ -537,28 +537,89 @@ grid
 ; [0 0 2]
 = gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
-| trk [%gotPath gotPath]
-
-; TODO:
 =?= gotPath
   | expectedPath
 
-; def connect_area_pair(state, area_pair):
-;     grid, rooms, tile_id = state
-;     start_area, end_area = area_pair
-;     new_grid, new_rooms, new_tile_id, path = bfs_connect(grid, rooms, tile_id, start_area, end_area, size)
-;     return create_hallway(new_grid, new_rooms, new_tile_id, path)
-;
+= tGrid      | [[0 0 1] [0 0 0] [0 0 2]]
+; [0 0 1]
+; [0 0 0]
+; [0 0 2]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[0 2]]
+= tEndArea   | [[2 2]]
+= tSize      | 3
+= tSeed      | 12345
 
-= (connectAreaPair grid rooms tileId startArea endArea size seed)
-@ [grid rooms tileId path] | bfsConnect grid rooms tileId startArea endArea size seed
+= expectedPath | [[1 2]]
+; [1 2]
+; [0 0 1]
+; [0 0 x]
+; [0 0 2]
+= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+=?= gotPath
+  | expectedPath
+
+= tGrid      | [[0 0 1] [0 0 0] [2 0 0]]
+; [0 0 1]
+; [0 0 0]
+; [2 0 0]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[2 0]]
+= tEndArea   | [[0 2]]
+= tSize      | 3
+= tSeed      | 12345
+
+= expectedPath | [[0 1] [0 0] [1 0]]
+; [0 1] [0 0] [1 0]
+; [x x 2]
+; [x 0 0]
+; [1 0 0]
+= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+; TODO: higher numbers can't go to lower numbers maybe?
+; FAILS. gets a [] path
+;=?= gotPath
+;  | expectedPath
+
+
+; TODO: need to test actual areas. not just single points
+; In the above tests, we're useing a list of a single coordinate pair
+; as the "area":
+;
+; = tStartArea | [[2 0]]
+; = tEndArea   | [[0 2]]
+;
+; But in actuality, those "areas" will be many sets of coordinates.
+
+; TODO: also need to make sure that if we start _inside_ a large area, that
+; the paths are drawn correctly and tiles updated properly.
+; Perhaps the 'connect areas' stuff should force itself to start on the
+; perimeters of the areas (ugh).
+
+
+
+; TODO: SOMEONE NEEDS TO INCREMETN TILEID BEFORE I GET IT!
+= (connectAreaPair grid rooms tileId size seed pair)
+; = (connectAreaPair grid rooms tileId startArea endArea size seed)
+@ [startArea endArea] | pair
+@ path | bfsConnect grid rooms tileId startArea endArea size seed
 | createHallway grid rooms tileId path
 
 = tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
-= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
-= tTileId | 2
-= tStart  | [0 0]
-= tEnd    | [2 2]
+; [1 0 0]
+; [0 0 0]
+; [0 0 2]
+= tRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+
+= tTileId | 3
+= tStart  | [[0 0]]
+= tEnd    | [[2 2]]
 = tSize   | 3
 = tSeed   | 12345
 = newRooms
@@ -567,41 +628,28 @@ grid
   [2 (tabFromPairs [[b#desc b#hello]])]
   [3 (tabFromPairs [[b#desc b#hello]])]
   [4 (tabFromPairs [[b#desc b#hello]])]
+  [5 (tabFromPairs [[b#desc b#hello]])]
 
+; Path ends up as:
+; [1 0 0]
+; [x 0 0]
+; [x x 2]
+; or
+; [1 0 0]
+; [3 0 0]
+; [4 5 2]
 = connectResult
-, [[1 3 0] [0 4 0] [0 5 2]]
+, [[1 0 0] [3 0 0] [4 5 2]]
   newRooms
-  5
+  6
 
-=?= (connectAreaPair tGrid tRooms tTileId tStart tEnd tSize tSeed)
+| trk [%xxxxxxxxxxxxxxxxxxxxxx]
+
+; expected path:
+; [0 0] [1 0] [2 0] [2 1] [2 2]
+
+=?= (connectAreaPair tGrid tRooms tTileId tSize tSeed [tStart tEnd])
   | connectResult
-
-; TODO: connect_area_pair input:
-;
-; state = (
-;     [[1, 0, 0],
-;      [0, 0, 0],
-;      [0, 0, 2]],
-;     {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;      2: {"exits": (0, 0, 0, 0), "desc": ""}},
-;     3
-; )
-; area_pair = ([(0, 0)], [(2, 2)])
-; size = 3
-;
-; TODO: connect_area_pair output:
-;
-;(
-;    [[1, 3, 0],
-;     [0, 3, 0],
-;     [0, 3, 2]],
-;    {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;     2: {"exits": (0, 0, 0, 0), "desc": ""},
-;     3: {"exits": (0, 0, 0, 0), "desc": ""},
-;     4: {"exits": (0, 0, 0, 0), "desc": ""},
-;     5: {"exits": (0, 0, 0, 0), "desc": ""}},
-;    6
-;)
 
 ; def connect_areas(grid, rooms, tile_id, areas, size):
 ;     return reduce(
@@ -611,28 +659,38 @@ grid
 ;     )
 ;
 
-; TODO: connect_areas input:
-;
-; grid = [[1, 0, 0],
-;         [0, 0, 0],
-;         [0, 0, 2]]
-; rooms = {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;          2: {"exits": (0, 0, 0, 0), "desc": ""}}
-; tile_id = 3
-; areas = [[(0, 0)], [(2, 2)]]
-; size = 3
-;
-; (
-;    [[1, 3, 0],
-;     [0, 3, 0],
-;     [0, 3, 2]],
-;    {1: {"exits": (0, 0, 0, 0), "desc": ""},
-;     2: {"exits": (0, 0, 0, 0), "desc": ""},
-;     3: {"exits": (0, 0, 0, 0), "desc": ""},
-;     4: {"exits": (0, 0, 0, 0), "desc": ""},
-;     5: {"exits": (0, 0, 0, 0), "desc": ""}},
-;    6
-; )
+= (connectAreas grid rooms tileId areas size seed)
+@ areaPairs | zip areas (drop 1 areas)
+| trk [%connectAreas areas]
+| trk [%areaPairs areaPairs]
+| foldl connectAreaPair size grid rooms tileId size seed areaPairs
+
+
+= tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
+= tRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+
+= tTileId | 3
+= newRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+  [3 (tabFromPairs [[b#desc b#hello]])]
+  [4 (tabFromPairs [[b#desc b#hello]])]
+  [5 (tabFromPairs [[b#desc b#hello]])]
+
+= tStartArea | [[0 0]]
+= tEndArea   | [[2 2]]
+
+= connectAreasResult
+, [[1 0 0] [3 0 0] [4 5 2]]
+  newRooms
+  6
+
+=?= (connectAreas tGrid tRooms tTileId [tStartArea tEndArea] tSize tSeed)
+  | connectAreasResult
 
 = (generateMap size areaCount seed)
 @ initialMap | map (i & (gen size (i & 0))) (gen size (i & 0))
