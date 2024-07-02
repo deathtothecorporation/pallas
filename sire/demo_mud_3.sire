@@ -320,7 +320,7 @@ grid
 
 ;;;;;;;; bfs example ;;;;;;
 
-= (ecreateNewPaths graph node path visited)
+= (ekreateNewPaths graph node path visited)
 @ neighbors | tabGet graph node
 @ neighbors | if (eql 0 neighbors) [] neighbors
 : n < foreach neighbors
@@ -340,7 +340,7 @@ grid
 @ node | idx (dec | len path) path ; last item
 | if (eql node end)
   path
-@ newPaths | ecreateNewPaths g node path v
+@ newPaths | ekreateNewPaths g node path v
 @ newVistd | updateVisited v newPaths
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
@@ -479,7 +479,12 @@ grid
 =?= (createHallway tGrid tRooms tTileId tPath)
   | chResult
 
-;; bfs connect
+;; bfs / A* connect
+
+= (manhattanDistance x1 y1 x2 y2)
+; | add (abs (sub x2 x1)) (abs (sub y2 y1))
+| add (if (lth x1 x2) (sub x2 x1) (sub x1 x2)) (if (lth y1 y2) (sub y2 y1) (sub y1 y2))
+
 
 = (getRandomItem lst seed)
 @ i | getRand 0 (dec | len lst) seed
@@ -498,25 +503,55 @@ grid
 @ ny | yFunc y
 [nx ny]
 
+; = (createNewPaths grid size x y path visited)
+; | trk [%createNewPaths path]
+; | if (eql path [])
+;   []
+; ;         right    down     left     up
+; @ cmd | [[inc id] [id inc] [dec id] [id dec]]
+; @ c | [[x y] [x y] [x y] [x y]]
+; @ z | zip c cmd
+; ;[[x y] [inc id]]
+; ;[[x y] [id inc]]
+; ;[[x y] [_Dec id]]
+; ;[[x y] [id _Dec]]
+; @ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
+; : [nx ny] < foreach newDirs
+; | if (and (inBounds nx ny size) (not | has [nx ny] visited))
+;   | weld path [[nx ny]]
+; []
+
+= (addValidPath acc [nx ny] size visited)
+| if (and (inBounds nx ny size) (not | has [nx ny] visited))
+  | weld acc [[nx ny]]
+acc
+
 = (createNewPaths grid size x y path visited)
-| if (eql path [])
-  []
+| trk [%createNewPaths path]
 ;         right    down     left     up
 @ cmd | [[inc id] [id inc] [dec id] [id dec]]
 @ c | [[x y] [x y] [x y] [x y]]
 @ z | zip c cmd
-;[[x y] [inc id]]
-;[[x y] [id inc]]
-;[[x y] [_Dec id]]
-;[[x y] [id _Dec]]
 @ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
-: [nx ny] < foreach newDirs
-| if (and (inBounds nx ny size) (not | has [nx ny] visited))
-  | weld path [[nx ny]]
-[]
+@ newPaths | foldl (acc coord & addValidPath acc coord size visited) [] newDirs
+| trk [%newPaths newPaths]
+newPaths
+
+= (processNeighbor args neighbor)
+@ [openSet closedSet gScore fScore cameFrom current endArea] | args
+@ tentativeGScore | add (idx current gScore) 1
+| if (or (not | has neighbor gScore) (lth tentativeGScore (idx neighbor gScore)))
+  @ openSet | weld openSet [neighbor]
+  @ cameFrom | tabIns neighbor current cameFrom
+  @ gScore | tabIns neighbor tentativeGScore gScore
+  @ [endX endY] | idx 0 endArea
+  @ hScore | manhattanDistance (idx 0 neighbor) (idx 1 neighbor) endX endY
+  @ fScore | tabIns neighbor (add tentativeGScore hScore) fScore
+  [openSet closedSet gScore fScore cameFrom]
+[openSet closedSet gScore fScore cameFrom]
 
 
-= (ocreateNewPaths grid size x y path visited)
+= (okreateNewPaths grid size x y path visited)
 | trk [%CRPInput path x y]
 | if (eql path [])
   | trk [%CRPEmptyPath]
@@ -536,12 +571,16 @@ grid
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
 | setUnion pathsSet (setFromRow visited)
 
-= (bfsRecurse grid rooms tileId endArea q v size)
-| if | eql 0 (len q)
+= (bfsRecurse grid rooms tileId start endArea q v size maxDepth)
+| trk [%bfsRecurseQueueLen (len q)]
+| trk [%bfsRecurseEndArea endArea]
+| trk [%bfsRecurseStart start]
+| trk [%bfsRecurseMaxDepth maxDepth]
+| if (or (eql 0 (len q)) (eql 0 maxDepth))
   []
 @ path | idx 0 q
 | if (eql path [])
-  | bfsRecurse grid rooms tileId endArea (drop 1 q) v size
+  | bfsRecurse grid rooms tileId start endArea (drop 1 q) v size (dec maxDepth)
 @ [x y] | idx (dec | len path) path
 | if (has [x y] endArea) ; if this tile is in the end area target
   path
@@ -549,22 +588,72 @@ grid
 @ newVistd | updateVisited v newPaths
 @ newQueue | weld (drop 1 q) newPaths
 | if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
-; | if (or (eql newQueue 0) (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q)))
   []
-| bfsRecurse grid rooms tileId endArea newQueue newVistd size
+| bfsRecurse grid rooms tileId start endArea newQueue newVistd size (dec maxDepth)
 
 ; returns a path.
 = (bfsConnect grid rooms tileId startArea endArea size seed)
 @ start | getRandomItem startArea (inc seed)
-; changed when ithought it was broken but createNewPaths was just empty
-;@ initialQ | [[start []]]
-;@ initialV | setFromRow []
 @ initialQ | [[start]]
 @ initialV | setFromRow [start]
-@ fullPath | bfsRecurse grid rooms tileId endArea initialQ initialV size
+@ maxDepth | mul 100 size ; Set a maximum depth for the search
+@ fullPath | bfsRecurse grid rooms tileId start endArea initialQ initialV size maxDepth
 fullPath
 ; TODO: trying removing start and end from paths
 ;| slice fullPath 1 (dec | len fullPath)
+
+= (reconstructPath cameFrom current)
+@ totalPath | [current]
+| if (not | has current cameFrom)
+    totalPath
+@ prev | idx current cameFrom
+| reconstructPath cameFrom prev | weld [prev] totalPath
+
+= (compareScores acc curr fScore)
+| if (lth (idx curr fScore) (idx (idx 0 acc) fScore))
+  [curr]
+acc
+
+; > List > Tab > Coords
+= (getLowestFScore openSet fScore)
+@ initial | [idx 0 openSet]
+@ lowest | foldl (acc curr & compareScores acc curr fScore) initial openSet
+| idx 0 lowest
+
+= (aStarRecurse grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
+| trk [%aStarOpenSetSize (len openSet)]
+| trk [%aStarMaxDepth maxDepth]
+| if (or (eql 0 (len openSet)) (eql 0 maxDepth))
+  | trk [%aStarEmpty]
+  []
+@ current | getLowestFScore openSet fScore
+| trk [%aStarCurrent current]
+| if (has current endArea)
+  | trk [%aStarFoundPath]
+  | reconstructPath cameFrom current
+| trk [%aStarContinue]
+@ openSet | filter (p & (neq p current)) openSet
+@ closedSet | setIns current closedSet
+@ neighbors | createNewPaths grid size (idx 0 current) (idx 1 current) [current] closedSet
+| trk [%aStarNeighbors neighbors]
+@ [newOpenSet newClosedSet newGScore newFScore newCameFrom]
+| foldl processNeighbor [openSet closedSet gScore fScore cameFrom current endArea] neighbors
+| aStarRecurse grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
+
+= (aStarConnect grid rooms tileId startArea endArea size seed)
+@ start | getRandomItem startArea (inc seed)
+| trk [%aStarConnectStartArea startArea]
+| trk [%aStarConnectStart start]
+@ [endX endY] | idx 0 endArea
+@ initialGScore | tabFromPairs [[start 0]]
+@ initialFScore | tabFromPairs [[start (manhattanDistance (idx 0 start) (idx 1 start) endX endY)]]
+@ maxDepth | mul 2 size
+@ openSet | [start]
+| trk [%openSet openSet]
+@ closedSet | setFromRow []
+@ cameFrom | tabFromPairs []
+@ fullPath | aStarRecurse grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
+fullPath
 
 
 ;;; bfs connect test
@@ -651,9 +740,12 @@ fullPath
 
 ; TODO: SOMEONE NEEDS TO INCREMENT TILEID BEFORE I GET IT!
 = (connectAreaPair grid rooms tileId size seed pair)
-; = (connectAreaPair grid rooms tileId startArea endArea size seed)
 @ [startArea endArea] | pair
-@ path | bfsConnect grid rooms tileId startArea endArea size (inc seed)
+| trk [%connectPair startArea endArea]
+@ path | aStarConnect grid rooms tileId startArea endArea size (inc seed)
+| trk [%pathFound path]
+| if (eql path [])
+  [grid rooms tileId]
 | createHallway grid rooms tileId path
 
 = tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
@@ -757,7 +849,7 @@ fullPath
 @ startArea | getRandomItem connectedAreas (inc seed)
 @ endArea | getRandomItem unconnectedAreas (mul 2 seed)
 | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
-@ path | bfsConnect grid rooms tileId startArea endArea size (add seed 2)
+@ path | connectAreaPair grid rooms tileId size (add seed 2) [startArea endArea]
 @ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
 | connectRandomAreas newGrid newRooms newTileId (removeItem unconnectedAreas endArea) (weld connectedAreas [endArea]) size (add seed 3)
 
@@ -786,7 +878,7 @@ fullPath
 ; - does it break when rooms are "inside each other"?
 ; - need to make larger rooms without breaking all the tests.
 
-= randomMap | generateMap 30 3 9
+= randomMap | generateMap 14 2 96
                           ; size
                              ; room count
                                ; entropy seed
