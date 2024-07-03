@@ -521,11 +521,17 @@ acc
 newPaths
 
 = (processNeighbor endArea args neighbor)
+; processNeighbor might be getting args current of zero
 @ [openSet closedSet gScore fScore cameFrom current] | args
+| trk [%PNcameFrom cameFrom]
+| trk [%PNcurrent current]; sometimes zero
 @ tentativeGScore | add (idx current gScore) 1
 | trk [%processedNeighbor1 neighbor (has neighbor closedSet) tentativeGScore (if (has neighbor gScore) (idx neighbor gScore) b#noGScore)]
 | if (and (not | has neighbor closedSet) (or (not | has neighbor gScore) (lth tentativeGScore (idx neighbor gScore))))
-  @ newOpenSet | setIns neighbor | setFromRow openSet
+  | trk [%yyyyopenSet openSet]
+  @ newOpenSet  | setIns neighbor openSet
+  ; TODO: hunting zero. 'current' may be zero below.
+  | trk [%zzzzCurrent current]
   @ newCameFrom | tabIns neighbor current cameFrom
   @ newGScore | tabIns neighbor tentativeGScore gScore
   @ [endX endY] | idx 0 endArea
@@ -535,14 +541,28 @@ newPaths
   | trk [%newgScore gScore]
   | trk [%hScore hScore]
   | trk [%newfScore fScore]
+  | trk [%newCameFrom newCameFrom]
   | trk [%processedNeighbor2 neighbor tentativeGScore hScore]
-  [newOpenSet closedSet newGScore newFScore newCameFrom]
-[openSet closedSet gScore fScore cameFrom]
+  [newOpenSet closedSet newGScore newFScore newCameFrom current]
+[openSet closedSet gScore fScore cameFrom current]
 
 
 = (updateVisited visited newPaths)
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
 | setUnion pathsSet (setFromRow visited)
+
+;= (reconstructPath cameFrom current)
+;| trk [%reconPath cameFrom current]
+;| if (not | tabHas current cameFrom)
+;  | trk [%reconPathEnd [current]]
+;  [current]
+;@ prev | idx current cameFrom
+;| trk [%reconPathPrev prev]
+;@ restOfPath | reconstructPath cameFrom prev
+;| trk [%reconPathRest restOfPath]
+;@ fullPath | weld restOfPath [current]
+;| trk [%reconPathFull fullPath]
+;| filter (coord & (neq 0 coord)) fullPath
 
 = (reconstructPath cameFrom current)
 | trk [%reconPath cameFrom current]
@@ -555,7 +575,8 @@ newPaths
 | trk [%reconPathRest restOfPath]
 @ fullPath | weld restOfPath [current]
 | trk [%reconPathFull fullPath]
-| filter (coord & (neq 0 coord)) fullPath
+fullPath
+
 
 ; swap keys/values in tab t
 ; note: duplicate values will appear once as key
@@ -583,31 +604,31 @@ newPaths
 | trk [%xxxlowest lowest]
 lowest
 
-= (aStarRecurse grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
-| trk [%aStarOpenSetSize (setLen openSet)]
+= (aStarRecurse n grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
+| trk [%zzzrecurseCameFrom cameFrom]
 | trk [%aStarMaxDepth maxDepth]
 | if (or (eql 0 (setLen openSet)) (eql 0 maxDepth))
-  | trk [%aStarEmpty]
   []
 @ current | getLowestFScore openSet fScore
-| trk [%aStarCurrent current]
+| trk [%cccCurrent current] ; ...never zero...
 | if (has current endArea)
   | trk [%aStarFoundPath]
+  | trk [%aStarOpenSet openSet]
+  | trk [%aStarCameFrom cameFrom]
   | reconstructPath cameFrom current
   ; TODO: it's gross to do this here. do it in reconstructPath:
   ; @ path | reconstructPath cameFrom current
   ; | filter (coord & (neq 0 coord)) | idx 0 path
-| trk [%aStarContinue]
-; @ openSet | filter (p & (neq p current)) openSet
 @ openSet | setDel current openSet
 @ closedSet | setIns current closedSet
 @ neighbors | createNewPaths grid size (idx 0 current) (idx 1 current) [current] closedSet
 | trk [%aStarNeighbors neighbors]
-; @ [newOpenSet newClosedSet newGScore newFScore newCameFrom] | foldl processNeighbor [openSet closedSet gScore fScore cameFrom current endArea] neighbors
-| trk [%xxxxxCurrent current]
+| trk [%xxxxxCurrent current] ; also never zero...
 | trk [%xxxxxNeighbors neighbors]
-@ [newOpenSet newClosedSet newGScore newFScore newCameFrom] | foldl (processNeighbor endArea) [openSet closedSet gScore fScore cameFrom current] neighbors
-| aStarRecurse grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
+@ [newOpenSet newClosedSet newGScore newFScore newCameFrom]
+  ; ostensibly, current below can be zero sometimes
+  | foldl (processNeighbor endArea) [openSet closedSet gScore fScore cameFrom current] neighbors
+| aStarRecurse n grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
 
 = (aStarConnect grid rooms tileId startArea endArea size seed)
 @ start | getRandomItem startArea (inc seed)
@@ -621,7 +642,7 @@ lowest
 | trk [%openSet openSet]
 @ closedSet | setFromRow []
 @ cameFrom | tabFromPairs []
-@ fullPath | aStarRecurse grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
+@ fullPath | aStarRecurse 0 grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
 fullPath
 
 
