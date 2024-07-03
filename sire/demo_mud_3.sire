@@ -487,6 +487,7 @@ grid
 
 
 = (getRandomItem lst seed)
+| trk [%someString]
 @ i | getRand 0 (dec | len lst) seed
 | idx i lst
 
@@ -503,31 +504,13 @@ grid
 @ ny | yFunc y
 [nx ny]
 
-; = (createNewPaths grid size x y path visited)
-; | trk [%createNewPaths path]
-; | if (eql path [])
-;   []
-; ;         right    down     left     up
-; @ cmd | [[inc id] [id inc] [dec id] [id dec]]
-; @ c | [[x y] [x y] [x y] [x y]]
-; @ z | zip c cmd
-; ;[[x y] [inc id]]
-; ;[[x y] [id inc]]
-; ;[[x y] [_Dec id]]
-; ;[[x y] [id _Dec]]
-; @ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
-; : [nx ny] < foreach newDirs
-; | if (and (inBounds nx ny size) (not | has [nx ny] visited))
-;   | weld path [[nx ny]]
-; []
-
 = (addValidPath acc [nx ny] size visited)
 | if (and (inBounds nx ny size) (not | has [nx ny] visited))
   | weld acc [[nx ny]]
 acc
 
 = (createNewPaths grid size x y path visited)
-| trk [%createNewPaths path]
+| trk [%createNewPaths [x y]]
 ;         right    down     left     up
 @ cmd | [[inc id] [id inc] [dec id] [id dec]]
 @ c | [[x y] [x y] [x y] [x y]]
@@ -537,93 +520,73 @@ acc
 | trk [%newPaths newPaths]
 newPaths
 
-= (processNeighbor args neighbor)
-@ [openSet closedSet gScore fScore cameFrom current endArea] | args
+= (processNeighbor endArea args neighbor)
+@ [openSet closedSet gScore fScore cameFrom current] | args
 @ tentativeGScore | add (idx current gScore) 1
-| if (or (not | has neighbor gScore) (lth tentativeGScore (idx neighbor gScore)))
-  @ openSet | weld openSet [neighbor]
-  @ cameFrom | tabIns neighbor current cameFrom
-  @ gScore | tabIns neighbor tentativeGScore gScore
+| trk [%processedNeighbor1 neighbor (has neighbor closedSet) tentativeGScore (if (has neighbor gScore) (idx neighbor gScore) b#noGScore)]
+| if (and (not | has neighbor closedSet) (or (not | has neighbor gScore) (lth tentativeGScore (idx neighbor gScore))))
+  @ newOpenSet | setIns neighbor | setFromRow openSet
+  @ newCameFrom | tabIns neighbor current cameFrom
+  @ newGScore | tabIns neighbor tentativeGScore gScore
   @ [endX endY] | idx 0 endArea
   @ hScore | manhattanDistance (idx 0 neighbor) (idx 1 neighbor) endX endY
-  @ fScore | tabIns neighbor (add tentativeGScore hScore) fScore
-  [openSet closedSet gScore fScore cameFrom]
+  @ newFScore | tabIns neighbor (add tentativeGScore hScore) fScore
+  | trk [%neighbor neighbor]
+  | trk [%newgScore gScore]
+  | trk [%hScore hScore]
+  | trk [%newfScore fScore]
+  | trk [%processedNeighbor2 neighbor tentativeGScore hScore]
+  [newOpenSet closedSet newGScore newFScore newCameFrom]
 [openSet closedSet gScore fScore cameFrom]
 
-
-= (okreateNewPaths grid size x y path visited)
-| trk [%CRPInput path x y]
-| if (eql path [])
-  | trk [%CRPEmptyPath]
-  []
-| trk [%tryingPath path]
-; consider the end of the path our current position
-: [dx dy] < foreach [[0 1] [1 0] [0 -1] [-1 0]]
-@ nx | add x dx
-@ ny | add y dy
-| trk [%CRTest [[nx ny]]]
-| if (and (inBounds nx ny size) (not | has [nx ny] visited))
-  | trk [%CRNew [[nx ny]]]
-  | weld path [[nx ny]]
-[]
 
 = (updateVisited visited newPaths)
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
 | setUnion pathsSet (setFromRow visited)
 
-= (bfsRecurse grid rooms tileId start endArea q v size maxDepth)
-| trk [%bfsRecurseQueueLen (len q)]
-| trk [%bfsRecurseEndArea endArea]
-| trk [%bfsRecurseStart start]
-| trk [%bfsRecurseMaxDepth maxDepth]
-| if (or (eql 0 (len q)) (eql 0 maxDepth))
-  []
-@ path | idx 0 q
-| if (eql path [])
-  | bfsRecurse grid rooms tileId start endArea (drop 1 q) v size (dec maxDepth)
-@ [x y] | idx (dec | len path) path
-| if (has [x y] endArea) ; if this tile is in the end area target
-  path
-@ newPaths | createNewPaths grid size x y path v
-@ newVistd | updateVisited v newPaths
-@ newQueue | weld (drop 1 q) newPaths
-| if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
-  []
-| bfsRecurse grid rooms tileId start endArea newQueue newVistd size (dec maxDepth)
-
-; returns a path.
-= (bfsConnect grid rooms tileId startArea endArea size seed)
-@ start | getRandomItem startArea (inc seed)
-@ initialQ | [[start]]
-@ initialV | setFromRow [start]
-@ maxDepth | mul 100 size ; Set a maximum depth for the search
-@ fullPath | bfsRecurse grid rooms tileId start endArea initialQ initialV size maxDepth
-fullPath
-; TODO: trying removing start and end from paths
-;| slice fullPath 1 (dec | len fullPath)
-
 = (reconstructPath cameFrom current)
-@ totalPath | [current]
-| if (not | has current cameFrom)
-    totalPath
+| trk [%reconPath cameFrom current]
+| if (not | tabHas current cameFrom)
+  | trk [%reconPathEnd [current]]
+  [current]
 @ prev | idx current cameFrom
-| reconstructPath cameFrom prev | weld [prev] totalPath
+| trk [%reconPathPrev prev]
+@ restOfPath | reconstructPath cameFrom prev
+| trk [%reconPathRest restOfPath]
+@ fullPath | weld restOfPath [current]
+| trk [%reconPathFull fullPath]
+| filter (coord & (neq 0 coord)) fullPath
 
+; swap keys/values in tab t
+; note: duplicate values will appear once as key
+= (valToKeys t)
+| tabFromPairs | map (k & [(tabGet t k) k]) (tabKeysRow t)
+
+
+> List > Tab > Coords
 = (compareScores acc curr fScore)
 | if (lth (idx curr fScore) (idx (idx 0 acc) fScore))
-  [curr]
-acc
+* [curr]
+* acc
 
-; > List > Tab > Coords
 = (getLowestFScore openSet fScore)
-@ initial | [idx 0 openSet]
-@ lowest | foldl (acc curr & compareScores acc curr fScore) initial openSet
-| idx 0 lowest
+@ initial | [(idx 0 (setToRow openSet))]
+| trk [%openSet openSet]
+| trk [%fScore fScore]
+| trk [%initial initial]
+@ swapped | valToKeys fScore
+| trk [%swapped swapped]
+@ minKey | tabMinKey swapped
+| trk [%minKey minKey]
+@ lowest | tabGet swapped minKey
+| trk [%xxxinitial initial]
+| trk [%xxxlowest lowest]
+lowest
 
 = (aStarRecurse grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
-| trk [%aStarOpenSetSize (len openSet)]
+| trk [%aStarOpenSetSize (setLen openSet)]
 | trk [%aStarMaxDepth maxDepth]
-| if (or (eql 0 (len openSet)) (eql 0 maxDepth))
+| if (or (eql 0 (setLen openSet)) (eql 0 maxDepth))
   | trk [%aStarEmpty]
   []
 @ current | getLowestFScore openSet fScore
@@ -631,13 +594,19 @@ acc
 | if (has current endArea)
   | trk [%aStarFoundPath]
   | reconstructPath cameFrom current
+  ; TODO: it's gross to do this here. do it in reconstructPath:
+  ; @ path | reconstructPath cameFrom current
+  ; | filter (coord & (neq 0 coord)) | idx 0 path
 | trk [%aStarContinue]
-@ openSet | filter (p & (neq p current)) openSet
+; @ openSet | filter (p & (neq p current)) openSet
+@ openSet | setDel current openSet
 @ closedSet | setIns current closedSet
 @ neighbors | createNewPaths grid size (idx 0 current) (idx 1 current) [current] closedSet
 | trk [%aStarNeighbors neighbors]
-@ [newOpenSet newClosedSet newGScore newFScore newCameFrom]
-| foldl processNeighbor [openSet closedSet gScore fScore cameFrom current endArea] neighbors
+; @ [newOpenSet newClosedSet newGScore newFScore newCameFrom] | foldl processNeighbor [openSet closedSet gScore fScore cameFrom current endArea] neighbors
+| trk [%xxxxxCurrent current]
+| trk [%xxxxxNeighbors neighbors]
+@ [newOpenSet newClosedSet newGScore newFScore newCameFrom] | foldl (processNeighbor endArea) [openSet closedSet gScore fScore cameFrom current] neighbors
 | aStarRecurse grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
 
 = (aStarConnect grid rooms tileId startArea endArea size seed)
@@ -647,8 +616,8 @@ acc
 @ [endX endY] | idx 0 endArea
 @ initialGScore | tabFromPairs [[start 0]]
 @ initialFScore | tabFromPairs [[start (manhattanDistance (idx 0 start) (idx 1 start) endX endY)]]
-@ maxDepth | mul 2 size
-@ openSet | [start]
+@ maxDepth | mul 8 size
+@ openSet | setFromRow [start]
 | trk [%openSet openSet]
 @ closedSet | setFromRow []
 @ cameFrom | tabFromPairs []
@@ -656,7 +625,7 @@ acc
 fullPath
 
 
-;;; bfs connect test
+;;; A* connect test
 
 = tGrid      | [[1 0 0] [0 0 0] [0 0 2]]
 ; [1 0 0]
@@ -673,7 +642,7 @@ fullPath
 ; [1 0 0]
 ; [x 0 0]
 ; [x x 2]
-= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
 =?= gotPath
   | expectedPath
@@ -694,7 +663,7 @@ fullPath
 ; [0 0 1]
 ; [0 0 x]
 ; [0 0 2]
-= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
 =?= gotPath
   | expectedPath
@@ -714,7 +683,7 @@ fullPath
 ; [0 0 2]
 ; [0 0 x]
 ; [1 x x]
-= gotPath | bfsConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
 
 ; TODO: higher numbers can't go to lower numbers maybe?
 ; FAILS. gets a [] path
