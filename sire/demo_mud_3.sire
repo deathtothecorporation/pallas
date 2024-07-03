@@ -203,7 +203,7 @@
 ; rooms[tileId] = {"exits": [0, 0, 0, 0], "description": ""}
 @ rooms | emptyTab ; TODO: set tileId to default tile thing above.
 @ filledTiles | weld filledTiles [[x y]]
-| trk [%filledTiles filledTiles]
+; | trk [%filledTiles filledTiles]
 | fillRow grid rooms (inc tileId) (inc x) y (dec width) size filledTiles
 
 = (fillArea grid rooms tileId x y width height size filledTiles)
@@ -221,10 +221,10 @@
 | add (mod n range) min
 
 ; TODO:! these should be bigger but that breaks the tests lol.
-= maxRoomH | 2
-= maxRoomW | 2
+;= maxRoomH | 2
+;= maxRoomW | 2
 
-= (oldGenerateAreas grid rooms tileId areaCount size currentArea areas seed)
+= (oldGenerateAreas grid rooms tileId areaCount size currentArea areas maxRoomH maxRoomW seed)
 ; For the number of areas we want, create some rectangle blueprints
 ; and then fill the grid with them.
 ; TOOD: randomness is sorta fake here..
@@ -236,7 +236,7 @@
 @ areaH | getRand 3 maxRoomH (mul 3 seed) ; room size
 @ [grid rooms tileId areaTiles] | fillArea grid rooms tileId areaX areaY areaW areaH size []
 @ newAreas | weld areas [areaTiles]
-| oldGenerateAreas grid rooms tileId areaCount size (inc currentArea) newAreas (inc seed)
+| oldGenerateAreas grid rooms tileId areaCount size (inc currentArea) newAreas maxRoomH maxRoomW (inc seed)
 
 = tSize   | 7
 = tGrid   | map (i & (gen tSize (i & 0))) (gen tSize (i & 0))
@@ -262,6 +262,8 @@
 , [[1 1] [2 1] [3 1] [1 2] [2 2] [3 2] [1 3] [2 3] [3 3]]
   [[5 4] [6 4] [5 5] [6 5] [5 6] [6 6]]
 
+= tMaxRoomSize | 2
+
 = expectResult
 , , [0 0 0 0 0 0 0]
     [0 1 2 3 0 0 0]
@@ -274,7 +276,7 @@ tRooms
 16 ; irrelevant next tile id
 areasResult
 
-=?= (oldGenerateAreas tGrid tRooms tTileId tAreaCount tSize tCurArea tAreas tSeed)
+=?= (oldGenerateAreas tGrid tRooms tTileId tAreaCount tSize tCurArea tAreas tMaxRoomSize tMaxRoomSize tSeed)
   | expectResult
 
 = (updateGrid grid x y tileId)
@@ -479,6 +481,23 @@ grid
 =?= (createHallway tGrid tRooms tTileId tPath)
   | chResult
 
+= (shuffleList lst seed)
+| sort (x & getRand 0 1000000 (add seed x)) lst
+
+= (range start end)
+| if (lte start end)
+  | gen (inc | sub end start) (i & add start i)
+| rev | gen (inc | sub start end) (i & sub start i)
+
+= (simplePath grid startArea endArea)
+@ [startX startY] | idx 0 startArea
+@ [endX endY] | idx 0 endArea
+@ horizontalPath | map (x & [x startY]) (range startX endX)
+@ verticalPath | map (y & [endX y]) (range startY endY)
+| trk [%xxxSimple horizontalPath verticalPath]
+| weld horizontalPath verticalPath
+
+
 ;; bfs / A* connect
 
 = (manhattanDistance x1 y1 x2 y2)
@@ -521,17 +540,14 @@ newPaths
 ; processNeighbor might be getting args current of zero
 @ [openSet closedSet gScore fScore cameFrom current] | args
 @ tentativeGScore | add (idx current gScore) 1
-| trk [%processNeighbor current neighbor tentativeGScore]
 | if (and (not | has neighbor closedSet) (or (not | tabHas neighbor gScore) (lth tentativeGScore (tabGet gScore neighbor))))
   @ newOpenSet  | setIns neighbor openSet
   ; TODO: hunting zero. 'current' may be zero below.
   @ newCameFrom | tabIns neighbor current cameFrom
-  | trk [%newCameFrom neighbor current (tabGet newCameFrom neighbor)]
   @ newGScore | tabIns neighbor tentativeGScore gScore
   @ [endX endY] | idx 0 endArea
   @ hScore | manhattanDistance (idx 0 neighbor) (idx 1 neighbor) endX endY
   @ newFScore | tabIns neighbor (add tentativeGScore hScore) fScore
-  | trk [%updatedScores neighbor tentativeGScore hScore (add tentativeGScore hScore)]
   [newOpenSet closedSet newGScore newFScore newCameFrom current]
 [openSet closedSet gScore fScore cameFrom current]
 
@@ -540,38 +556,13 @@ newPaths
 @ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
 | setUnion pathsSet (setFromRow visited)
 
-;= (reconstructPath cameFrom current)
-;| trk [%reconPath cameFrom current]
-;| if (not | tabHas current cameFrom)
-;  | trk [%reconPathEnd [current]]
-;  [current]
-;@ prev | idx current cameFrom
-;| trk [%reconPathPrev prev]
-;@ restOfPath | reconstructPath cameFrom prev
-;| trk [%reconPathRest restOfPath]
-;@ fullPath | weld restOfPath [current]
-;| trk [%reconPathFull fullPath]
-;| filter (coord & (neq 0 coord)) fullPath
-
 = (reconstructPath cameFrom current)
-| if (not | tabHas current cameFrom)
-  [current]
-@ prev | idx current cameFrom
-@ restOfPath | reconstructPath cameFrom prev
-@ fullPath | weld restOfPath [current]
-fullPath
-
-= (reconstructPath cameFrom current)
-| trk [%reconPath cameFrom current]
 ^ _ current []
 ? (go node path)
-| trk [%reconPathStep node path]
 @ newPath | weld [node] path
 | if (not | tabHas node cameFrom)
-  | trk [%reconPathEnd newPath]
   newPath
 @ prev | tabGet cameFrom node
-| trk [%reconPathPrev node prev]
 | go prev newPath
 
 
@@ -589,25 +580,17 @@ fullPath
 
 = (getLowestFScore openSet fScore)
 @ initial | [(idx 0 (setToRow openSet))]
-| trk [%initial initial]
-| trk [%fScore fScore]
 @ swapped | valToKeys fScore
 @ minKey | tabMinKey swapped
 @ lowest | tabGet swapped minKey
-| trk [%lowestFScore lowest]
 [lowest]
 
 = (aStarRecurse n grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
-| trk [%aStarRecurse n (setLen openSet) (setLen closedSet) maxDepth]
 | if (or (eql 0 (setLen openSet)) (eql 0 maxDepth))
   []
 @ lowestFScoreNodes | getLowestFScore openSet fScore
-| trk [%lowestFScoreNodesCount (len lowestFScoreNodes)]
 @ current | idx 0 lowestFScoreNodes
-| trk [%selectedCurrent current]
 | if (has current endArea)
-  | trk [%aStarFoundPath]
-  | trk [%finalCameFrom cameFrom]
   | reconstructPath cameFrom current
   ; TODO: it's gross to do this here. do it in reconstructPath:
   ; @ path | reconstructPath cameFrom current
@@ -615,12 +598,9 @@ fullPath
 @ openSet | setDel current openSet
 @ closedSet | setIns current closedSet
 @ neighbors | createNewPaths grid size (idx 0 current) (idx 1 current) [current] closedSet
-| trk [%neighbors neighbors]
 @ [newOpenSet newClosedSet newGScore newFScore newCameFrom]
   ; ostensibly, current below can be zero sometimes
   | foldl (processNeighbor endArea) [openSet closedSet gScore fScore cameFrom current] neighbors
-| trk [%afterProcessing (setLen newOpenSet) (setLen newClosedSet)]
-| trk [%currentCameFrom newCameFrom]
 | aStarRecurse n grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
 
 = (aStarConnect grid rooms tileId startArea endArea size seed)
@@ -628,11 +608,14 @@ fullPath
 @ [endX endY] | idx 0 endArea
 @ initialGScore | tabFromPairs [[start 0]]
 @ initialFScore | tabFromPairs [[start (manhattanDistance (idx 0 start) (idx 1 start) endX endY)]]
-@ maxDepth | mul 8 size
+@ maxDepth | mul 1000 size
 @ openSet | setFromRow [start]
 @ closedSet | setFromRow []
 @ cameFrom | tabFromPairs []
 @ fullPath | aStarRecurse 0 grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
+| if (eql 0 | len fullPath)
+  | trk [%aStarFailedUsingSimple start [endX endY]]
+  | simplePath grid start [endX endY]
 fullPath
 
 
@@ -755,11 +738,11 @@ fullPath
 ; [0 0 x]
 ; [0 0 2]
 ; or
-; [1 3 4]
-; [0 0 5]
-; [0 0 2]
+; [1 0 0]
+; [3 0 0]
+; [4 5 2]
 = connectResult
-, [[1 3 4] [0 0 5] [0 0 2]]
+, [[1 0 0] [3 0 0] [4 5 2]]
   newRooms
   6
 
@@ -823,7 +806,7 @@ fullPath
   @ startArea | getRandomItem connectedAreas seed
   @ endArea | idx 0 unconnectedAreas
   | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
-  @ path | bfsConnect grid rooms tileId startArea endArea size (inc seed)
+  @ path | aStarConnect grid rooms tileId startArea endArea size (inc seed)
   @ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
   [newGrid newRooms newTileId (weld connectedAreas [endArea])]
 @ startArea | getRandomItem connectedAreas (inc seed)
@@ -838,16 +821,60 @@ fullPath
   [grid rooms tileId areas]
 | connectRandomAreas grid rooms tileId areas [] size seed
 
+; TODO: hack for now. random area connection is bugged
+= (connectAllAreas grid rooms tileId areas size seed)
+| trk [%connectingAllAreas (len areas)]
+^ _ grid rooms tileId areas 0
+? (loop grid rooms tileId remainingAreas n)
+| if (lth (len remainingAreas) 2)
+  [grid rooms tileId]
+@ startArea | idx 0 remainingAreas
+@ endArea   | idx 1 remainingAreas
+| trk [%connecting n [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
+@ path | aStarConnect grid rooms tileId startArea endArea size (add seed n)
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+| if (eql (len remainingAreas) 2)
+  [newGrid newRooms newTileId]
+| loop newGrid newRooms newTileId (drop 1 remainingAreas) (inc n)
 
-= (generateMap size areaCount seed)
+; Connects areas randomly; also sometimes re-connects areas (15% chance)
+= (connectAreasOrganic grid rooms tileId areas size seed)
+| trk [%connectingAreasOrganic (len areas)]
+^ _ grid rooms tileId (drop 1 areas) [(idx 0 areas)] seed 0
+? (loop grid rooms tileId unconnected connected curSeed iteration)
+| trk [%loopStart iteration (len unconnected) (len connected)]
+| if (eql 0 | len unconnected)
+  | trk [%allConnected (len connected)]
+  [grid rooms tileId]
+@ startArea | getRandomItem connected curSeed
+@ endArea | idx 0 unconnected
+| trk [%connecting iteration startArea endArea]
+;@ path | simplePath grid startArea endArea
+@ path | aStarConnect grid rooms tileId startArea endArea size (add curSeed 2)
+| trk [%pathFound (len path)]
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+@ newConnected | weld connected [endArea]
+| trk [%afterConnection (len newConnected) (len (drop 1 unconnected))]
+@ reinsertChance | getRand 0 100 (add curSeed 3)
+| trk [%reinsertChance reinsertChance]
+| if (and (lth reinsertChance 20) (gth (len newConnected) 2)); TODO: chance+-
+  @ reinsertArea | getRandomItem (drop 1 newConnected) (add curSeed 4)
+  @ filteredConnected | filter (a & neq a reinsertArea) newConnected
+  | trk [%reinsertingArea reinsertArea (len filteredConnected)]
+  | loop newGrid newRooms newTileId (weld (drop 1 unconnected) [reinsertArea]) filteredConnected (add curSeed 5) (inc iteration)
+| trk [%noReinsertion (len (drop 1 unconnected)) (len newConnected)]
+| loop newGrid newRooms newTileId (drop 1 unconnected) newConnected (add curSeed 5) (inc iteration)
+
+
+= (generateMap size areaCount maxRoomH maxRoomW seed)
 @ initialMap   | map (i & (gen size (i & 0))) (gen size (i & 0))
 @ initialRooms | emptyTab
 @ tileId  | 1
 @ curArea | 0
 @ areas   | []
 | trk [%xxxGenerating]
-@ [grid rooms tileId areas] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea areas seed
-@ [grid rooms tileId] | connectAreas grid rooms tileId areas size seed
+@ [grid rooms tileId areas] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea areas maxRoomH maxRoomW seed
+@ [grid rooms tileId] | connectAreasOrganic grid rooms tileId areas size seed
 [grid rooms tileId]
 ; the below is the same:
 ; | generateAreas initialMap initialRooms tileId areaCount size curArea seed
@@ -858,10 +885,13 @@ fullPath
 ; - does it break when rooms are "inside each other"?
 ; - need to make larger rooms without breaking all the tests.
 
-= randomMap | generateMap 14 2 96
-                          ; size
-                             ; room count
-                               ; entropy seed
+; = randomMap | generateMap 30 8 97
+= randomMap | generateMap 40 10 5 8 9999
+                          ;size
+                             ;room count
+                                ;room h
+                                  ;room w
+                                    ;entropy seed
 
 ; if you make the room count really big, you get larger, organic-looking spaces.
 ; TODO: consider passing in the room size min/max
@@ -1391,8 +1421,6 @@ b#{your inventory is empty}
 ; return [state msg]
 > PlayerID > Input > State > (State, Message)
 = (commandDo input state)
-| trk [%randomMap randomMap]
-| trk [%mapSize (len (idx 0 randomMap))]
 @ playerId | tabGet state b#actingId
 ; | trk [%cmdo input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input
@@ -1418,8 +1446,6 @@ b#{your inventory is empty}
 ; | trk [%changed changed]
 @ newState | changed
 @ playerId | tabGet newState b#actingId
-| trk [%rm randomMap]
-| trk [%len (len randomMap)]
 | (printrandom, tick newState)
 ; | (print playerId newState msg, tick newState)
 
