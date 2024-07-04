@@ -10,11 +10,20 @@
 ;[ 3] [ 4] [ 5] [11];
 ;[ 0] [ 6] [ 0] [12];
 
+; - refactor rooms tab
+;   - remove roomsT
+;   - just use tiles Tab
+;     - include: area ID, xy coordinates, level number, 
+;   - have a function that takes x,y coords and returns its tileID
+;   - have a function that takes a tileId and returns its area ID
+;     - (this is probably just a tabGet on the tiles Tab)
+;   - rework map printing to use this
+; - merge budget visibility
+; - then use A* or BFS for line of sight?
+
 ; TODO / IDEAS
 ; - [x] room descriptions
-; - [ ] manifest items
-; - [ ] allow for defining rooms, items, etc. all state in a separate file
-;       that gets ingested here.
+; - [x] manifest items
 ; - [ ] generate stuff in rooms from random tables
 ;   - [ ] then add AI...
 ; - [ ] doors that open and close
@@ -23,7 +32,7 @@
 ; - [ ] sounds?
 ; - [ ] range of sound (like line of sight)
 
-; TODO: generate random map.
+; [x] TODO: generate random map.
 
 
 > Bar > Maybe Nat
