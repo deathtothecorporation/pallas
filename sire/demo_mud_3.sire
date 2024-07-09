@@ -20,6 +20,9 @@
 ;   - rework map printing to use this
 ; - merge budget visibility
 ; - then use A* or BFS for line of sight?
+; TODO for integration:
+; - [ ] add connector tiles to room tab with what areas they connect (useful for
+;       more organic randomly-generated descriptions later
 
 ; (idx 0 randomMap) == "grid of tiles"
 
@@ -481,13 +484,12 @@ grid
 ; "draw hallways between areas"
 = (processTile args coord)
 @ [grid rooms tileId startArea endArea] | args
+| trk [%xxxProcessTile startArea endArea]
 @ x | idx 0 coord
 @ y | idx 1 coord
 | if | eql 0 (idx x (idx y grid))
   @ grid  | updateGrid grid x y tileId
-  ; TODO: update rooms properly
-  | trk [%xxxProcessTile startArea endArea]
-  @ roomAdd | tabFromPairs [[b#desc b#pending] [b#x x] [b#y y] [b#areaId 0] [b#connector [startArea endArea]]]
+  @ roomAdd | tabFromPairs [[b#desc b#pending] [b#x x] [b#y y] [b#areaId 0] [b#connector [0 0]]]
   @ rooms | tabIns tileId roomAdd rooms
   [grid rooms (inc tileId)]
 [grid rooms tileId]
@@ -701,7 +703,7 @@ newPaths
 @ cameFrom | tabFromPairs []
 @ fullPath | aStarRecurse 0 grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
 | if (eql 0 | len fullPath)
-  | trk [%aStarFailedUsingSimple start [endX endY]]
+  | trk [%aStarFailedUsingSimple start endArea]
   | simplePath grid start [endX endY]
 fullPath
 
@@ -896,13 +898,13 @@ fullPath
   @ endArea | idx 0 unconnectedAreas
   | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
   @ path | aStarConnect grid rooms tileId startArea endArea size (inc seed)
-  @ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+  @ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
   [newGrid newRooms newTileId (weld connectedAreas [endArea])]
 @ startArea | getRandomItem connectedAreas (inc seed)
 @ endArea | getRandomItem unconnectedAreas (mul 2 seed)
 | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
 @ path | connectAreaPair grid rooms tileId size (add seed 2) [startArea endArea]
-@ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
 | connectRandomAreas newGrid newRooms newTileId (removeItem unconnectedAreas endArea) (weld connectedAreas [endArea]) size (add seed 3)
 
 = (connectAreas grid rooms tileId areas size seed)
@@ -921,7 +923,7 @@ fullPath
 @ endArea   | idx 1 remainingAreas
 | trk [%connecting n [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
 @ path | aStarConnect grid rooms tileId startArea endArea size (add seed n)
-@ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
 | if (eql (len remainingAreas) 2)
   [newGrid newRooms newTileId]
 | loop newGrid newRooms newTileId (drop 1 remainingAreas) (inc n)
@@ -941,8 +943,12 @@ fullPath
 ;@ path | simplePath grid startArea endArea
 @ path | aStarConnect grid rooms tileId startArea endArea size (add curSeed 2)
 | trk [%pathFound (len path)]
-@ [newGrid newRooms newTileId] | createHallway grid rooms tileId path
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
 @ newConnected | weld connected [endArea]
+| trk [%xxxaddConnector startArea endArea]
+| trk [%xxxTODO %needToLoopOverPath path]
+;@ roomAdd | tabFromPairs [[b#desc b#pending] [b#x b#todo] [b#y b#todo] [b#areaId 0] [b#connector [startArea endArea]]]
+;@ rooms | tabIns tileId roomAdd rooms
 | trk [%afterConnection (len newConnected) (len (drop 1 unconnected))]
 @ reinsertChance | getRand 0 100 (add curSeed 3)
 | trk [%reinsertChance reinsertChance]
@@ -974,7 +980,8 @@ fullPath
 ; - need to make larger rooms without breaking all the tests.
 
 ; = randomMap | generateMap 30 8 97
-= randomMap | generateMap 40 10 5 8 99999
+; TODO:
+; = randomMap | generateMap 40 10 5 8 99999
                           ;size
                              ;room count
                                 ;room h
@@ -987,11 +994,26 @@ fullPath
 
 ;;;; end random map generator
 
+= initialMap | generateMap 9 2 2 2 9876
+= initialTiles | (idx 0 initialMap)
+= randomMap | initialMap
+
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 01 02 03 00 00 00 00]
+; ++ [00 00 04 05 06 00 00 00 00]
+; ++ [00 00 07 08 09 00 00 00 00]
+; ++ [00 00 00 16 00 00 00 00 00]
+; ++ [00 00 00 10 11 12 00 00 00]
+; ++ [00 00 00 13 14 15 00 00 00]
+
 
 ; generateInitialState
 = (gis)
 | tabFromPairs
 , [b#rooms rooms]
+  [b#tiles initialTiles]
   [b#roomT rooms]
   [b#grid grid]
   [b#items items]
@@ -1096,6 +1118,111 @@ newState
 ; ++ [5 [0 5 6 3]]
 ; ++ [6 [4 0 0 0]]
 
+= testMap | generateMap 9 2 2 2 9876
+= testTiles | (idx 0 testMap)
+= testRooms | (idx 1 testMap)
+= testPlayers
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 16]
+      [b#hp 10]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 8]
+      [b#hp 10]
+
+= (testState)
+| tabFromPairs
+, [b#rooms testRooms]
+  [b#tiles testTiles]
+  [b#players testPlayers]
+
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 01 02 03 00 00 00 00]
+; ++ [00 00 04 05 06 00 00 00 00]
+; ++ [00 00 07 08 09 00 00 00 00]
+; ++ [00 00 00 16 00 00 00 00 00]
+; ++ [00 00 00 10 11 12 00 00 00]
+; ++ [00 00 00 13 14 15 00 00 00]
+
+= (getNewCoords dir x y)
+# switch dir
+* b#n
+  | [x (dec y)]
+* b#s
+  | [x (inc y)]
+* b#w
+  | [(dec x) y]
+* b#e
+  | [(inc x) y]
+* _
+  | [x y]  ; default case for invalid direction
+; {north} [x (dec y)]
+; {south} [x (inc y)]
+; {west}  [(dec x) y]
+; {east}  [(inc x) y]
+
+= (inBounds x y size)
+| and (gte x 0) | and (lth x size) | and (gte y 0) (lth y size)
+
+= (tileIdAtDirFrom tileId dir tiles rooms)
+@ gridHeight | len tiles
+@ gridWidth | len | idx 0 tiles
+@ tileInfo | tabGet rooms tileId
+| trk [%w gridWidth]
+| trk [%h gridHeight]
+| trk [%tiles tiles]
+| trk [%rooms rooms]
+| trk [%tileId tileId]
+| trk [%tileInfo tileInfo]
+| if (eql tileInfo 0)  ; tileId not found in rooms
+  0
+@ x | tabGet tileInfo b#x
+@ y | tabGet tileInfo b#y
+| trk [%x x]
+| trk [%y y]
+@ newCoords | getNewCoords dir x y
+| trk [%newCoords newCoords]
+@ [newX newY] | newCoords
+| trk [%newXY newX newY]
+| if (inBounds newX newY gridHeight)
+  | idx newX | idx newY tiles
+0
+;| if (or (lth newX 0) (gte newX gridWidth))
+;| trk [%oobX]
+;  0  ; Out of bounds X
+;| if (or (lth newY 0) (gte newY gridHeight))
+;| trk [%oobY]
+;  0  ; Out of bounds Y
+
+=?= 8
+  | (tileIdAtDirFrom 16 b#n testTiles testRooms)
+
+=?= 10
+  | (tileIdAtDirFrom 16 b#s testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 16 b#w testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 16 b#e testTiles testRooms)
+
+=?= 10
+  | (tileIdAtDirFrom 11 b#w testTiles testRooms)
+
+=?= 14
+  | (tileIdAtDirFrom 11 b#s testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 14 b#s testTiles testRooms)
+
 = (dirIndex dir)
 | if (eql dir b{n}) | 0
 | if (eql dir b{e}) | 1
@@ -1105,10 +1232,16 @@ newState
 
 ; returns room id
 = (go playerId dir state)
-| if (eql (curRoom playerId state) 0)
-  | trk [%whereAreYou]
+@ curTile | curPos playerId state
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+| trk [%tiles tiles]
+| trk [%rooms rooms]
+| if (eql curTile 0)
+  | trk [%whereAreYou %curTile 0]
   0
-@ nextRoom | get (tabGet (curRoom playerId state) b#exits) (dirIndex dir)
+@ nextRoom | tileIdAtDirFrom curTile dir tiles rooms
+| trk [%cur curTile %next nextRoom]
 ; | trk [%next nextRoom]
 # switch nextRoom
 * 0
@@ -1187,54 +1320,56 @@ b#{#}
 =?= (dirIndex b{wut})
   | 0
 
-=?= (curPos 1 gis)
-  | 1
+=?= 16
+  | curPos 1 testState
 
-=?= 6
-  @ s | movePlayer 1 4 gis
-  | go 1 b{s} s
+=?= 10
+  | go 1 b{s} testState
 
-=?= 5
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+; 14 -> e -> 15
+=?= 15
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 14 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{e} s
 
-=?= 3
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+; 8 -> w -> 7
+=?= 7
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 8 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{w} s
 
+; 16 -> n -> 8
 =?= 8
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 1 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 16 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{n} s
 
-; this means going "x" actually goes north, because of dirIndex 0
-=?= 7
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
+; this means going "x" goes nowhere
+=?= 4
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
   @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{x} s
 
 ; you're nowhere, can't go anywhere.
-=?= 0
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 99 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
-  | go 1 b{n} s
+;=?= 0
+;  @ players | (tabGet b#players gis)
+;  @ us | tabGet players 1
+;  @ usMoved | tabIns b#currentPosition 99 us
+;  @ updPlayers | tabIns 1 usMoved players
+;  @ s | tabIns b#players updPlayers gis
+;  | go 1 b{n} s
 
 = (message playerId newState oldState dir)
 | if (eql (curPos playerId newState) (curPos playerId oldState))
