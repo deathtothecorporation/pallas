@@ -1239,8 +1239,10 @@ newState
 = (getY room)
 | tabGet room b#y
 
+; Takes a rooms map and replaces the Tab key of tileId
+; for [x y] coordinates (and inserts the tileId into the room map)
+; Useful for "finding" a tile by x,y coordinates
 = (coordsAsKeys rooms)
-| trk [%tabKeysRow rooms]
 | tabFromPairs
 | map (k & [[(getX (tabGet rooms k)) (getY (tabGet rooms k))] (tabIns b#tileId k (tabGet rooms k))]) (tabKeysRow rooms)
 
@@ -1275,14 +1277,18 @@ newState
 =?= expectedCoordsMap
   | coordsAsKeys smallTiles
 
-= (getTileIdforXY x y state)
+= (getTileIdforXY xyCoords state)
+@ [x y] | xyCoords
 @ rooms | tabGet state b#rooms
 @ coordMap | coordsAsKeys rooms
 @ roomFromCoords | tabGet coordMap [x y]
 | tabGet roomFromCoords b#tileId
 
 =?= 16
-  | getXYForTileId 3 6 testState
+  | getTileIdforXY [3 6] testState
+
+=?= 0
+  | getTileIdforXY [99 99] testState
 
 = (tileEntrances tileId state)
 @ tiles | tabGet state b#tiles
@@ -1290,22 +1296,17 @@ newState
 @ room  | tabGet rooms tileId
 @ x | tabGet room b#x
 @ y | tabGet room b#y
-@ neighborMap | []
-@ cmd | [[inc id] [id inc] [dec id] [id dec]]
-@ c | [[x y] [x y] [x y] [x y]]
-@ z | zip c cmd
-@ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
-; * b#n
-;   | [x (dec y)]
-; * b#s
-;   | [x (inc y)]
-; * b#w
-;   | [(dec x) y]
-; * b#e
-;   | [(inc x) y]
-| trk [%newDirs newDirs]
-; TODO
-[0 12 8 4]
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+; TODO: Need to control for max size (zero if out of bounds)
+; Use inBounds
+@ neighborCoords | [[x (dec y)] [x (inc y)] [(dec x) y] [(inc x) y]]
+; TODO; neighborcoords is wrong
+| trk [%xxxNeighborCoords neighborCoords]
+@ neighborMap | map (coord & tabGet coordMap coord) neighborCoords
+| trk [%xxxCM coordMap]
+| trk [%xxxNeighbors neighborMap]
+| map (tileId & tabGet rooms tileId) neighborMap
 
 = (printATile playerId state tileId)
 @ tiles | tabGet state b#tiles
