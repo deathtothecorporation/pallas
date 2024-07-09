@@ -404,82 +404,6 @@ grid
 ; [grid rooms tileId] ; TODO short-circuit
 | connectAreas grid rooms tileId areaCount size (inc currentConnection) (inc seed)
 
-;;;;;;;; bfs example ;;;;;;
-
-= (ekreateNewPaths graph node path visited)
-@ neighbors | tabGet graph node
-@ neighbors | if (eql 0 neighbors) [] neighbors
-: n < foreach neighbors
-| if (not | has n visited)
-  | weld path [n]
-[]
-
-= (updateVisited visited newPaths)
-; get the last/new node from each path as a set
-@ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
-| setUnion pathsSet visited
-
-= (bfsRecurseT g end q v)
-| if | eql 0 (len q)
-  []
-@ path | idx 0 q
-@ node | idx (dec | len path) path ; last item
-| if (eql node end)
-  path
-@ newPaths | ekreateNewPaths g node path v
-@ newVistd | updateVisited v newPaths
-@ newQueue | weld (drop 1 q) newPaths
-| if (and (eql 0 | len newPaths) (eql 0 | len | drop 1 q))
-  []
-| bfsRecurseT g end newQueue newVistd
-
-= (shortest graph start end)
-| if (or (not | tabHas end graph) (not | tabHas start graph))
-  []
-@ initialQ | [[start]]
-@ initialV | setFromRow [start]
-| bfsRecurseT graph end initialQ initialV
-
-; adjacency list
-= bfsGraph
-| tabFromPairs
-++  , b#a [b#b b#c]
-++  , b#b [b#a b#d b#e]
-++  , b#c [b#a b#f]
-++  , b#d [b#b]
-++  , b#e [b#b b#f]
-++  , b#f [b#c b#e]
-
-;     A
-;    / \
-;   /   \
-;  B     C
-; / \     \
-; |  \     |
-; D   E----F
-
-=?= (shortest bfsGraph b#a b#f)
-  | [b#a b#c b#f]
-
-=?= (shortest bfsGraph b#a b#e)
-  | [b#a b#b b#e]
-
-=?= (shortest bfsGraph b#d b#f)
-  | [b#d b#b b#e b#f]
-
-=?= (shortest bfsGraph b#a b#a)
-  | [b#a]
-
-=?= (shortest bfsGraph b#a b#g)
-  | [] ; there is no "g" in the graph
-
-=?= (shortest bfsGraph b#g b#a)
-  | [] ; there is no "g" in the graph
-
-=?= (shortest bfsGraph b#g b#g)
-  | [] ; there is no "g" in the graph
-
-;;;;;;;;;;;;;
 
 ; "draw hallways between areas"
 = (processTile args coord)
@@ -659,7 +583,6 @@ newPaths
 ; note: duplicate values will appear once as key
 = (valToKeys t)
 | tabFromPairs | map (k & [(tabGet t k) k]) (tabKeysRow t)
-
 
 > List > Tab > Coords
 = (compareScores acc curr fScore)
@@ -1288,20 +1211,131 @@ newState
     b{╶}
   b#{.}
 
-= (printARoom playerId state roomId)
-@ entrances | (tabGet (roomGet roomId state) b#exits)
-| if (eql (curPos playerId state) roomId)
+; = (printARoom playerId state roomId)
+; @ entrances | (tabGet (roomGet roomId state) b#exits)
+; | if (eql (curPos playerId state) roomId)
+;   b#{@}
+; | if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
+;   b#{ɐ}
+; | if (len entrances)
+;   | printEntrance entrances
+; b#{#}
+
+= (getXYForTileId tileId state)
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+[(tabGet room b#x) (tabGet room b#y)]
+
+=?= [3 6]
+  | getXYForTileId 16 testState
+
+=?= [0 0]
+  | getXYForTileId 99 testState
+
+= (getX room)
+| tabGet room b#x
+
+= (getY room)
+| tabGet room b#y
+
+= (coordsAsKeys rooms)
+| trk [%tabKeysRow rooms]
+| tabFromPairs
+| map (k & [[(getX (tabGet rooms k)) (getY (tabGet rooms k))] (tabIns b#tileId k (tabGet rooms k))]) (tabKeysRow rooms)
+
+= smallTiles
+| tabFromPairs
+++  , 11
+    | tabFromPairs
+    , [b#x 9]
+      [b#y 8]
+      [b#something b#else]
+++  , 5
+    | tabFromPairs
+    , [b#x 2]
+      [b#y 3]
+      [b#something b#else]
+
+= expectedCoordsMap
+| tabFromPairs
+++  , [2 3]
+    | tabFromPairs
+    , [b#x 2]
+      [b#y 3]
+      [b#tileId 5]
+      [b#something b#else]
+++  , [9 8]
+    | tabFromPairs
+    , [b#x 9]
+      [b#y 8]
+      [b#tileId 11]
+      [b#something b#else]
+
+=?= expectedCoordsMap
+  | coordsAsKeys smallTiles
+
+= (getTileIdforXY x y state)
+@ rooms | tabGet state b#rooms
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+| tabGet roomFromCoords b#tileId
+
+=?= 16
+  | getXYForTileId 3 6 testState
+
+= (tileEntrances tileId state)
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ neighborMap | []
+@ cmd | [[inc id] [id inc] [dec id] [id dec]]
+@ c | [[x y] [x y] [x y] [x y]]
+@ z | zip c cmd
+@ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
+; * b#n
+;   | [x (dec y)]
+; * b#s
+;   | [x (inc y)]
+; * b#w
+;   | [(dec x) y]
+; * b#e
+;   | [(inc x) y]
+| trk [%newDirs newDirs]
+; TODO
+[0 12 8 4]
+
+= (printATile playerId state tileId)
+@ tiles | tabGet state b#tiles
+| trk [%tiles tiles]
+@ entrances | tileEntrances tileId state
+| if (eql (curPos playerId state) tileId)
   b#{@}
-| if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
+| if (has tileId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
   b#{ɐ}
 | if (len entrances)
   | printEntrance entrances
 b#{#}
 
+; = (printrandom)
+; ; @ cols | len (idx 0 grid)
+; @ [grid rooms lastTileId] | randomMap
+; @ gridRows | map (row & (barCat | map (tid & (if (eql tid 0) b#{#} b#{.})) row)) grid
+; | trk [%tileId lastTileId]
+; | trk [%rooms rooms]
+; @ rowLines | barCat | intersperse barNewline gridRows
+; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+
 = (print playerId state message)
 ; @ rows | len grid
 ; @ cols | len (idx 0 grid)
-@ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
+@ tiles | tabGet state b#tiles
+| trk [%tiles tiles]
+@ rooms | tabGet state b#rooms
+@ gridRows | map (row & (barCat | map (tileId & printATile playerId state tileId) row)) tiles
+| trk [%gridRows gridRows]
 @ rowLines | barCat | intersperse barNewline gridRows
 | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
@@ -1658,21 +1692,21 @@ b#{your inventory is empty}
 ; @ rowLines | barCat | intersperse barNewline gridRows
 ; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
-= (printrandom)
-; @ cols | len (idx 0 grid)
-@ [grid rooms lastTileId] | randomMap
-@ gridRows | map (row & (barCat | map (tid & (if (eql tid 0) b#{#} b#{.})) row)) grid
-| trk [%tileId lastTileId]
-| trk [%rooms rooms]
-@ rowLines | barCat | intersperse barNewline gridRows
-| barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
+; = (printrandom)
+; ; @ cols | len (idx 0 grid)
+; @ [grid rooms lastTileId] | randomMap
+; @ gridRows | map (row & (barCat | map (tid & (if (eql tid 0) b#{#} b#{.})) row)) grid
+; | trk [%tileId lastTileId]
+; | trk [%rooms rooms]
+; @ rowLines | barCat | intersperse barNewline gridRows
+; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
 = (tick state input)
 @ [changed msg] | commandDo input state
 ; | trk [%changed changed]
 @ newState | changed
 @ playerId | tabGet newState b#actingId
-| (printrandom, tick newState)
-; | (print playerId newState msg, tick newState)
+; | (printrandom, tick newState)
+| (print playerId newState msg, tick newState)
 
 = main | tick gis
