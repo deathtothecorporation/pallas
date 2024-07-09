@@ -576,8 +576,9 @@ grid
 | rev | gen (inc | sub start end) (i & sub start i)
 
 = (simplePath grid startArea endArea)
-@ [startX startY] | idx 0 startArea
-@ [endX endY] | idx 0 endArea
+| trk [%xxxSimpleStart startArea endArea]
+@ [startX startY] | startArea
+@ [endX endY] | endArea
 @ horizontalPath | map (x & [x startY]) (range startX endX)
 @ verticalPath | map (y & [endX y]) (range startY endY)
 | trk [%xxxSimple horizontalPath verticalPath]
