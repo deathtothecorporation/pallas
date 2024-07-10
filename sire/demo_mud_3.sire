@@ -334,7 +334,6 @@ grid
 ; [grid rooms nextTileId]
 
 = (createHorizontalCorridor grid rooms tileId startX endX y)
-| trk %xxxcreateHoriz
 | if (eql startX endX)
   [grid rooms tileId]
 ; map_grid[y][start_x] = tile_id
@@ -349,7 +348,6 @@ grid
 [grid rooms tileId]
 
 = (createVerticalCorridor grid rooms tileId startX startY endY x)
-| trk %xxxcreateVert
 | if (eql startY endY)
   [grid rooms tileId]
 @ gridRow | (idx startY grid)
@@ -361,39 +359,25 @@ grid
 | createVerticalCorridor grid rooms (inc tileId) newStartY endY x
 
 = (findNonZeroTile grid size seed)
-| trk [%yyyfindNonZeroGrid grid]
-| trk [%gridBit (idx 5 grid)]
-| trk %xxxfindNonzero
 @ x | getRand 1 size seed
 @ y | getRand 1 size (mul 2 seed)
 @ gridRow | (idx y grid)
-| trk [%gridRow (idx y grid)]
 @ seek | (idx x gridRow)
-| trk [%xxxX x]
-| trk [%xxxY y]
-| trk [%xxxSeek seek]
 | if (neq seek 0)
-  | trk [%xxxSeekFound seek]
   [x y]
 | findNonZeroTile grid size (inc seed)
 
 = (findDifferentNonZeroTile grid size startX startY seed)
-| trk %xxxfindDifferentNonzero
-| trk [%xxxfindDiffGridLen (len grid)]
 @ x | getRand 1 size seed
 @ y | getRand 1 size (mul 2 seed)
 @ gridRow | (idx y grid)
 @ seek | (idx x gridRow)
-| trk [%zzzDifX x]
-| trk [%zzzDifY y]
-| trk [%zzzDifSeek seek]
 | if | and (neq seek 0) (or (neq x startX) (neq y startY))
   [x y]
 | findDifferentNonZeroTile grid size startX startY (inc seed)
 
 = (connectAreas grid rooms tileId areaCount size currentConnection seed)
 | trk %xxxConnectingAreas
-| trk [%yyyCAGrid grid]
 | if (eql currentConnection (dec areaCount))
   | trk %xxxDoneConnectingAreas
   [grid rooms tileId]
@@ -758,8 +742,6 @@ fullPath
   newRooms
   6
 
-| trk [%xxxxxxxxxxxxxxxxxxxxxx]
-
 ; expected path:
 ; [0 0] [1 0] [2 0] [2 1] [2 2]
 
@@ -868,7 +850,6 @@ fullPath
 | trk [%pathFound (len path)]
 @ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
 @ newConnected | weld connected [endArea]
-| trk [%xxxaddConnector startArea endArea]
 | trk [%xxxTODO %needToLoopOverPath path]
 ;@ roomAdd | tabFromPairs [[b#desc b#pending] [b#x b#todo] [b#y b#todo] [b#areaId 0] [b#connector [startArea endArea]]]
 ;@ rooms | tabIns tileId roomAdd rooms
@@ -893,7 +874,6 @@ fullPath
 | trk [%xxxGenerating]
 @ [grid rooms tileId areas] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea areas maxRoomH maxRoomW seed
 @ [grid rooms tileId] | connectAreasOrganic grid rooms tileId areas size seed
-| trk [%xxxRooms rooms]
 [grid rooms tileId]
 
 ; TODOS:
@@ -1100,22 +1080,12 @@ newState
 @ gridHeight | len tiles
 @ gridWidth | len | idx 0 tiles
 @ tileInfo | tabGet rooms tileId
-| trk [%w gridWidth]
-| trk [%h gridHeight]
-| trk [%tiles tiles]
-| trk [%rooms rooms]
-| trk [%tileId tileId]
-| trk [%tileInfo tileInfo]
 | if (eql tileInfo 0)  ; tileId not found in rooms
   0
 @ x | tabGet tileInfo b#x
 @ y | tabGet tileInfo b#y
-| trk [%x x]
-| trk [%y y]
 @ newCoords | getNewCoords dir x y
-| trk [%newCoords newCoords]
 @ [newX newY] | newCoords
-| trk [%newXY newX newY]
 | if (inBounds newX newY gridHeight)
   | idx newX | idx newY tiles
 0
@@ -1159,14 +1129,9 @@ newState
 @ curTile | curPos playerId state
 @ tiles | tabGet state b#tiles
 @ rooms | tabGet state b#rooms
-| trk [%tiles tiles]
-| trk [%rooms rooms]
 | if (eql curTile 0)
-  | trk [%whereAreYou %curTile 0]
   0
 @ nextRoom | tileIdAtDirFrom curTile dir tiles rooms
-| trk [%cur curTile %next nextRoom]
-; | trk [%next nextRoom]
 # switch nextRoom
 * 0
   | curPos playerId state
@@ -1179,7 +1144,6 @@ newState
 ; | natBar | showNat tile
 
 = (printEntrance eRow)
-  | trk [%xxxEntrance eRow]
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
     b#{┼}
@@ -1295,7 +1259,6 @@ newState
 = (tileEntrances playerId tileId state)
 @ tiles | tabGet state b#tiles
 @ rooms | tabGet state b#rooms
-| trk [%xxxRooms rooms]
 @ room  | tabGet rooms tileId
 @ x | tabGet room b#x
 @ y | tabGet room b#y
@@ -1303,15 +1266,12 @@ newState
 @ roomFromCoords | tabGet coordMap [x y]
 ; TODO: Need to control for max size (zero if out of bounds)
 ; Use inBounds
+; Get the neighboring coordinates in each cardinal
+; directoin
 @ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
-; TODO; neighborcoords is wrong
-| trk [%xxxNeighborCoords neighborCoords]
-; [%xxxNeighborCoords [[5 7] [5 9] [4 8] [6 8]]]
+; get neighbor tile maps from coord-keyed map
 @ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
-| trk [%xxxCM coordMap]
-| trk [%xxxTID tileId]
-| trk [%xxxNM neighborMap]
-| trk [%xxxTP (map (x & tabGet x b#tileId) neighborMap)]
+; from above, get tile IDs in each cardinal direction
 | map (x & tabGet x b#tileId) neighborMap
 
 = (printATile playerId state tileId)
@@ -1339,8 +1299,6 @@ b#{#}
 ; @ cols | len (idx 0 grid)
 @ tiles | tabGet state b#tiles
 @ rooms | tabGet state b#rooms
-| trk [%xxxState state]
-| trk [%xxxplayerId playerId]
 @ gridRows | map (row & (barCat | map (tileId & printATile playerId state tileId) row)) tiles
 @ rowLines | barCat | intersperse barNewline gridRows
 | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
@@ -1707,7 +1665,7 @@ b#{your inventory is empty}
 ; @ rowLines | barCat | intersperse barNewline gridRows
 ; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
-= initialMap | generateMap 43 8 5 4 9876
+= initialMap | generateMap 24 8 5 4 9876
 = initialTiles | (idx 0 initialMap)
 = initialRooms | (idx 1 initialMap)
 = initialPlayers
