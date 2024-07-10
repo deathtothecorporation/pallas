@@ -926,12 +926,6 @@ fullPath
   [b#actingId 1]
   [b#yell yell]
 
-= (movePlayer playerId moveTo state)
-@ players | (tabGet state b#players)
-@ player | tabGet players playerId
-@ pMoved | tabIns b#currentPosition moveTo player
-@ updPlayers | tabIns playerId pMoved players
-| tabIns b#players updPlayers state
 
 ; Don't use this. poorly-conceived.
 ; TODO: Probably use Sets to do these "diffs" nicely
@@ -953,8 +947,29 @@ fullPath
 = (roomGet id state)
 | tabGet (stateGet b#rooms state) id
 
-= (exitsGet roomId state)
-| tabGet (roomGet roomId state) b#exits
+= (getX room)
+| tabGet room b#x
+
+= (getY room)
+| tabGet room b#y
+
+; Takes a rooms map and replaces the Tab key of tileId
+; for [x y] coordinates (and inserts the tileId into the room map)
+; Useful for "finding" a tile by x,y coordinates
+= (coordsAsKeys rooms)
+| tabFromPairs
+| map (k & [[(getX (tabGet rooms k)) (getY (tabGet rooms k))] (tabIns b#tileId k (tabGet rooms k))]) (tabKeysRow rooms)
+
+= (exitsGet tileId state)
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
+| map (x & tabGet x b#tileId) neighborMap
 
 = (itemGet id state)
 | tabGet (stateGet b#items state) id
@@ -966,11 +981,12 @@ fullPath
 | tabGet (playerGet playerId state) b#currentPosition
 
 = (curRoom playerId state)
-| tabGet (stateGet b#roomT state) (curPos playerId state)
+| tabGet (stateGet b#rooms state) (curPos playerId state)
 
 = (actingPlayerSet playerId state)
 @ newState | tabIns b#actingId playerId state
 [newState b#{}]
+
 
 ; = (getPlayerIds roomId state)
 ; | filter neq-0
@@ -1143,7 +1159,7 @@ newState
 ;   b#{@}
 ; | natBar | showNat tile
 
-= (printEntrance eRow)
+= (printFoggedEntrance eRow)
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
     b#{┼}
@@ -1175,17 +1191,59 @@ newState
     b{╴}
   * [0 1 0 0]
     b{╶}
+  b#{.}
+
+= (printEntrance eRow)
+  # switch (map (neq 0) eRow)
+  * [1 1 1 1]
+    b#{╬}
+  * [0 1 1 1]
+    b#{╦}
+  * [1 1 0 1]
+    b#{╩}
+  * [1 1 1 0]
+    b{╠}
+  * [1 0 1 1]
+    b{╣}
+  * [1 0 1 0]
+    b{║}
+  * [0 1 0 1]
+    b{═}
+  * [0 1 1 0]
+    b{╔}
+  * [0 0 1 1]
+    b{╗}
+  * [1 1 0 0]
+    b{╚}
+  * [1 0 0 1]
+    b{╝}
+  * [1 0 0 0]
+    b{╨}
+  * [0 0 1 0]
+    b{╥}
+  * [0 0 0 1]
+    b{╡}
+  * [0 1 0 0]
+    b{╞}
   b#{#}
 
-; = (printARoom playerId state roomId)
-; @ entrances | (tabGet (roomGet roomId state) b#exits)
-; | if (eql (curPos playerId state) roomId)
-;   b#{@}
-; | if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-;   b#{ɐ}
-; | if (len entrances)
-;   | printEntrance entrances
-; b#{#}
+= (printApproach roomId vantageId state)
+; Print the stub directrion from the vantage point room to this one.
+@ exits | rowCons 0 (exitsGet roomId state)
+@ approaches [b#{ } b{╵} b{╶} b{╷} b{╴} ]
+@ idxOfApproach | elemIdx vantageId exits NONE id
+| if idxOfApproach
+  | idx idxOfApproach approaches
+b{ }
+
+= (describeExits eRow)
+@ dirs | listFromRow [b#n b#e b#s b#w]
+@ exitsBinary | (map (neq 0) eRow)
+@ exitList | listFromRow exitsBinary
+@ availableDirs | listZip dirs exitList
+@ filteredDirs | listFilter (pair & neq 0 (idx 1 pair)) availableDirs ; Keep only available directions
+@ formattedNames | map (pair & idx 0 pair) (listToRow filteredDirs)
+| barCat [b#{You can move: } (barCat | (intersperse b#{, } formattedNames))]
 
 = (getXYForTileId tileId state)
 @ tiles | tabGet state b#tiles
@@ -1198,19 +1256,6 @@ newState
 
 =?= [0 0]
   | getXYForTileId 99 testState
-
-= (getX room)
-| tabGet room b#x
-
-= (getY room)
-| tabGet room b#y
-
-; Takes a rooms map and replaces the Tab key of tileId
-; for [x y] coordinates (and inserts the tileId into the room map)
-; Useful for "finding" a tile by x,y coordinates
-= (coordsAsKeys rooms)
-| tabFromPairs
-| map (k & [[(getX (tabGet rooms k)) (getY (tabGet rooms k))] (tabIns b#tileId k (tabGet rooms k))]) (tabKeysRow rooms)
 
 = smallTiles
 | tabFromPairs
@@ -1277,13 +1322,59 @@ newState
 = (printATile playerId state tileId)
 @ tiles | tabGet state b#tiles
 @ entrances | tileEntrances playerId tileId state
+@ player | playerGet playerId state
+@ seenRooms | tabGet player b#seenRooms
+@ currentUnfogged | (exitsGet (curPos playerId state) state)
 | if (eql (curPos playerId state) tileId)
   b#{@}
+| if (not (has tileId seenRooms))
+  | printApproach tileId (tabGet player b#currentPosition) state
 | if (has tileId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-  b#{ɐ}
+  | if (has tileId currentUnfogged)
+    b#{ɐ}
+  | printFoggedEntrance entrances
 | if (len entrances)
-  | printEntrance entrances
-b#{#}
+  | if (has tileId currentUnfogged)
+    | printEntrance entrances
+  | printFoggedEntrance entrances
+b#{?}
+
+; TODO; seems we might not need this? unused?
+= (currentSeenRooms playerId playersT roomsT)
+@ player | tabGet playersT playerId
+| trk [%player player]
+@ tileId | tabGet player b#currentPosition
+| trk [%curid tileId]
+@ room  | tabGet roomsT tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
+@ currentExits | map (x & tabGet x b#tileId) neighborMap
+| setDel 0 | setUnion (setFromRow currentExits) (setFromRow [tileId])
+
+= (determineNewSeenRooms playerId roomId state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ seenRooms | tabGet player b#seenRooms
+@ seenRoomsSet | setFromRow seenRooms
+; TODO: use this if you want to add +1 to sight range / show the neighboring room
+@ newSeenRoomsSet | setDel 0 | setUnion (setFromRow (exitsGet roomId state)) seenRoomsSet ; show through room's exits
+; TODO: use this if you want to just show immediate neighbors
+; @ newSeenRoomsSet | setDel 0 | setUnion (setFromRow [roomId]) seenRoomsSet ; show just approahces
+| setToRow newSeenRoomsSet
+
+= (movePlayer playerId moveTo state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ newSeenRoomsRow | determineNewSeenRooms playerId moveTo state
+@ player | tabIns b#currentPosition moveTo player
+@ player  | tabIns b#seenRooms newSeenRoomsRow player
+@ pMoved | tabIns b#currentPosition moveTo player
+@ updPlayers | tabIns playerId pMoved players
+| tabIns b#players updPlayers state
 
 ; = (printrandom)
 ; ; @ cols | len (idx 0 grid)
@@ -1676,12 +1767,14 @@ b#{your inventory is empty}
       [b#name b#{Vinney}]
       [b#currentPosition 16]
       [b#hp 10]
+      [b#seenRooms [16]]
 ++  , 2
     | tabFromPairs
     , [b#connected 0]
       [b#name b#{Chase}]
       [b#currentPosition 8]
       [b#hp 10]
+      [b#seenRooms [8]]
 
 = initRandomState
 | tabFromPairs

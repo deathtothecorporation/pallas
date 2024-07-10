@@ -222,6 +222,7 @@
 @ newSeenRoomsSet | setDel 0 | setUnion (setFromRow [roomId]) seenRoomsSet ; show just approahces
 | setToRow newSeenRoomsSet
 
+; TODO seen
 = (movePlayer playerId moveTo state)
 @ players | (tabGet state b#players)
 @ player | tabGet players playerId
@@ -326,6 +327,7 @@ newState
 ;   b#{@}
 ; | natBar | showNat tile
 
+; TODO seen
 = (printFoggedEntrance eRow)
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
@@ -360,6 +362,7 @@ newState
     b{╶}
   b#{.}
 
+; TODO seen
 = (printEntrance eRow)
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
@@ -394,6 +397,7 @@ newState
     b{╞}
   b#{.}
 
+; TODO seen
 = (printApproach roomId vantageId state)
 ; Print the stub directrion from the vantage point room to this one.
 @ exits | rowCons 0 (exitsGet roomId state)
@@ -403,6 +407,7 @@ newState
   | idx idxOfApproach approaches
 b{ }
 
+; TODO seen
 = (describeExits eRow)
 @ dirs | listFromRow [b#n b#e b#s b#w]
 @ exitsBinary | (map (neq 0) eRow)
@@ -412,6 +417,7 @@ b{ }
 @ formattedNames | map (pair & idx 0 pair) (listToRow filteredDirs)
 | barCat [b#{You can move: } (barCat | (intersperse b#{, } formattedNames))]
 
+; TODO seen
 = (printARoom playerId state roomId)
 @ entrances | (tabGet (roomGet roomId state) b#exits)
 @ player | playerGet playerId state
@@ -432,11 +438,13 @@ b{ }
   | printFoggedEntrance entrances
 b#{?}
 
+; TODO seen
 = (displayMap playerId state)
 @ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
 @ rowLines | barCat | intersperse barNewline gridRows
 rowLines
 
+; TODO seen
 = (print playerId state message)
 @ mapPrint | displayMap playerId state
 @ currentPosition | curPos playerId state
