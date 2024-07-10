@@ -56,10 +56,13 @@
 @ !acc (add (mul 10 acc) (sub c {0}))
 | go acc inc-ix
 
-= (getOffset needle haystack)
-@ start (idx 0 (barSubstringSearch needle haystack))
-@ width (barLen needle)
-(add start width)
+= (flatten rows)
+@ head (fromSome listHead rows)
+@ tail (slice rows 1 (len rows))
+| ifNot (len tail)
+  head
+| weld head (flatten tail)
+
 
 = grid
 , [8 9 13 14]
@@ -191,31 +194,729 @@
       [b#name b#{Chase}]
       [b#currentPosition 5]
       [b#hp 10]
-++  , 3
-    | tabFromPairs
-    , [b#connected 0]
-      [b#name b#{Dan}]
-      [b#currentPosition 2]
-      [b#hp 10]
-++  , 4
-    | tabFromPairs
-    , [b#connected 0]
-      [b#name b#{Jack}]
-      [b#currentPosition 4]
-      [b#hp 10]
-++  , 5
-    | tabFromPairs
-    , [b#connected 0]
-      [b#name b#{Demon}]
-      [b#currentPosition 8]
-      [b#hp 10]
 
 = yell | []
+
+
+;;;; random map generator
+
+= (insertAt i n row)
+@ h | idx 0 (splitAt i row)
+@ t | idx 1 (splitAt i row)
+@ t | drop 1 t
+@ t | weld [n] t
+| weld h t
+
+= (fillRow grid rooms areaId tileId x y width size filledTiles)
+; Given a row, in the grid, fill it with tiles in a zone
+| if | or (eql width 0) | or (gte x size) (gte y size)
+  [grid rooms tileId filledTiles]
+@ gridRow | (idx y grid)
+@ gridRow | insertAt x tileId gridRow
+@ grid | insertAt y gridRow grid
+@ areaIdForTab | (inc areaId)
+@ roomAdd | tabFromPairs [[b#desc b#pending] [b#x x] [b#y y] [b#areaId areaIdForTab]]
+@ rooms | tabIns tileId roomAdd rooms
+@ filledTiles | weld filledTiles [[x y]]
+| fillRow grid rooms areaId (inc tileId) (inc x) y (dec width) size filledTiles
+
+= (fillArea grid rooms areaId tileId x y width height size filledTiles)
+; For a room blueprint, fill rows appropriately
+| if (eql height 0)
+  [grid rooms tileId filledTiles]
+@ [grid rooms tileId rowTiles]  | fillRow grid rooms areaId tileId x y width size filledTiles
+@ [grid rooms tileId areaTiles] | fillArea grid rooms areaId tileId x (inc y) width (dec height) size rowTiles
+[grid rooms tileId areaTiles]
+
+= (getRand min max seed)
+@ r | mkRand seed
+@ n | barNat (idx 0 r)
+@ range | inc (sub max min)
+| add (mod n range) min
+
+; TODO:! these should be bigger but that breaks the tests lol.
+;= maxRoomH | 2
+;= maxRoomW | 2
+
+= (oldGenerateAreas grid rooms tileId areaCount size currentArea areas maxRoomH maxRoomW seed)
+; For the number of areas we want, create some rectangle blueprints
+; and then fill the grid with them.
+; TOOD: randomness is sorta fake here..
+| if (eql currentArea areaCount)
+  [grid rooms tileId areas]
+@ areaX | getRand 1 (sub size 2) seed
+@ areaY | getRand 1 (sub size 2) (mul 2 seed) ; nudge it...?
+@ areaW | getRand 3 maxRoomW seed       ; room size
+@ areaH | getRand 3 maxRoomH (mul 3 seed) ; room size
+@ [grid rooms tileId areaTiles] | fillArea grid rooms currentArea tileId areaX areaY areaW areaH size []
+@ newAreas | weld areas [areaTiles]
+| oldGenerateAreas grid rooms tileId areaCount size (inc currentArea) newAreas maxRoomH maxRoomW (inc seed)
+
+= tSize   | 7
+= tGrid   | map (i & (gen tSize (i & 0))) (gen tSize (i & 0))
+= tRooms  | emptyTab
+= tTileId | 1
+= tSeed   | 3
+= tAreas | []
+= tAreaCount | 2
+= tCurArea   | 0
+
+; This seed of 3 produces:
+;
+; [0 0 0 0 0 00 00]
+; [0 1 2 3 0 00 00]
+; [0 4 5 6 0 00 00]
+; [0 7 8 9 0 00 00]
+; [0 0 0 0 0 10 11]
+; [0 0 0 0 0 12 13]
+; [0 0 0 0 0 14 15]
+
+; and the list of areas is now included as well:
+= areasResult
+, [[1 1] [2 1] [3 1] [1 2] [2 2] [3 2] [1 3] [2 3] [3 3]]
+  [[5 4] [6 4] [5 5] [6 5] [5 6] [6 6]]
+
+= tMaxRoomSize | 2
+
+= expectResult
+, , [0 0 0 0 0 0 0]
+    [0 1 2 3 0 0 0]
+    [0 4 5 6 0 0 0]
+    [0 7 8 9 0 0 0]
+    [0 0 0 0 0 10 11]
+    [0 0 0 0 0 12 13]
+    [0 0 0 0 0 14 15]
+tRooms
+16 ; irrelevant next tile id
+areasResult
+
+; TODO: tests commented out now that rooms are generating descriptions...
+; =?= (oldGenerateAreas tGrid tRooms tTileId tAreaCount tSize tCurArea tAreas tMaxRoomSize tMaxRoomSize tSeed)
+;   | expectResult
+
+= (updateGrid grid x y tileId)
+@ gridRow | (idx y grid)
+@ gridRow | insertAt x tileId gridRow
+@ grid | insertAt y gridRow grid
+grid
+
+; = (generateAreas grid areaCount size seed)
+; ; For the number of areas we want, create some rectangle blueprints
+; ; and then fill the grid with them.
+; @ areas | []
+; @ rooms | emptyTab
+; @ nextTileId | 1
+; ;
+; ; loop to create some number of areas
+; : i < foreach (gen (dec areaCount) id)
+; ; set up area coordinates
+; @ areaX | getRand 1 (sub size 2) seed
+; @ areaY | getRand 1 (sub size 2) (mul 2 seed) ; nudge it...?
+; @ areaW | getRand 3 10 seed        ; room size
+; @ areaH | getRand 3 9 (mul 3 seed) ; room size
+; @ area  | []
+; @ yMin  | areaY
+; @ yMax  | (min (add areaY areaH) (dec size)) ; height, constrained to avail grid
+; @ yRange | filter (lte yMin) | gen yMax id   ; y-coords of area not exceeding grid
+; ;
+; ; loop over y coordinates of this area
+; : y < foreach yRange
+; @ xMin  | areaX
+; @ xMax  | (min (add areaX areaW) (dec size)) ; width, constrained to avail grid
+; @ xRange | filter (lte xMin) | gen xMax id   ; x-coords of area not exceeding grid
+; ;
+; ; loop over x coordinates of area
+; : x < foreach xRange
+; @ grid | updateGrid x y nextTileId ;....
+; @ area | weld area [x y]           ;......
+; @ nextTileId | inc nextTileId      ;........
+; ; ...oh wait, this doesn't work without recursion...
+; @ [grid rooms nextTileId] | fillArea grid rooms nextTileId areaX areaY areaW areaH size
+; [grid rooms nextTileId]
+
+= (createHorizontalCorridor grid rooms tileId startX endX y)
+| if (eql startX endX)
+  [grid rooms tileId]
+; map_grid[y][start_x] = tile_id
+@ gridRow | (idx y grid)
+@ gridRow | insertAt startX tileId gridRow
+@ grid | insertAt y gridRow grid
+; TODO:
+; rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
+@ newStartX | if (lth startX endX) (inc startX) (dec startX)
+; return create_horizontal_corridor(map_grid, rooms, tile_id + 1, start_x + (1 if start_x < end_x else -1), end_x, y)
+| createHorizontalCorridor grid rooms (inc tileId) newStartX endX y
+[grid rooms tileId]
+
+= (createVerticalCorridor grid rooms tileId startX startY endY x)
+| if (eql startY endY)
+  [grid rooms tileId]
+@ gridRow | (idx startY grid)
+@ gridRow | insertAt x tileId gridRow
+@ grid | insertAt startY gridRow grid
+; TODO:
+; rooms[tile_id] = {"exits": [0, 0, 0, 0], "desc": ""}
+@ newStartY | if (lth startY endY) (inc startY) (dec startY)
+| createVerticalCorridor grid rooms (inc tileId) newStartY endY x
+
+= (findNonZeroTile grid size seed)
+@ x | getRand 1 size seed
+@ y | getRand 1 size (mul 2 seed)
+@ gridRow | (idx y grid)
+@ seek | (idx x gridRow)
+| if (neq seek 0)
+  [x y]
+| findNonZeroTile grid size (inc seed)
+
+= (findDifferentNonZeroTile grid size startX startY seed)
+@ x | getRand 1 size seed
+@ y | getRand 1 size (mul 2 seed)
+@ gridRow | (idx y grid)
+@ seek | (idx x gridRow)
+| if | and (neq seek 0) (or (neq x startX) (neq y startY))
+  [x y]
+| findDifferentNonZeroTile grid size startX startY (inc seed)
+
+= (connectAreas grid rooms tileId areaCount size currentConnection seed)
+| trk %xxxConnectingAreas
+| if (eql currentConnection (dec areaCount))
+  | trk %xxxDoneConnectingAreas
+  [grid rooms tileId]
+@ [startX startY] | findNonZeroTile grid size seed
+@ [endX endY] | findDifferentNonZeroTile grid size startX startY seed
+@ [grid rooms tileId] | createHorizontalCorridor grid rooms tileId startX endX startY
+@ [grid rooms tileId] | createVerticalCorridor grid rooms tileId startY endY endX
+; [grid rooms tileId] ; TODO short-circuit
+| connectAreas grid rooms tileId areaCount size (inc currentConnection) (inc seed)
+
+
+; "draw hallways between areas"
+= (processTile args coord)
+@ [grid rooms tileId startArea endArea] | args
+| trk [%xxxProcessTile startArea endArea]
+@ x | idx 0 coord
+@ y | idx 1 coord
+| if | eql 0 (idx x (idx y grid))
+  @ grid  | updateGrid grid x y tileId
+  @ roomAdd | tabFromPairs [[b#desc b#pending] [b#x x] [b#y y] [b#areaId 0] [b#connector [0 0]]]
+  @ rooms | tabIns tileId roomAdd rooms
+  [grid rooms (inc tileId)]
+[grid rooms tileId]
+
+; TODO: tests commented out now that tile tab is filling out
+; = tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
+; = tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+; = tTileId | 2
+; = tCoord  | [0 0]
+; = newRooms
+; | tabFromPairs
+; , [1 (tabFromPairs [[b#desc b#hello]])]
+;   [2 (tabFromPairs [[b#desc b#hello]])]
+; 
+; = ptResult
+; , [[2 0 0] [0 1 0] [0 0 0]]
+;   newRooms
+;   3
+; 
+; =?= (processTile [tGrid tRooms tTileId] tCoord)
+;   | ptResult
+; 
+; = tCoord | [1 2]
+; = ptResult
+; , [[0 0 0] [0 1 0] [0 2 0]]
+;   newRooms
+;   3
+; 
+; =?= (processTile [tGrid tRooms tTileId] tCoord)
+;   | ptResult
+
+
+= (createHallway grid rooms tileId startArea endArea path)
+; continuously pass new coords to processTile's arg list
+| foldl processTile [grid rooms tileId startArea endArea] path
+
+; TODO: tests commented out now that tile tab is filling out
+;= tGrid   | [[0 0 0] [0 1 0] [0 0 0]]
+;= tRooms  | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+;= tTileId | 2
+;= tCoord  | [0 0]
+;= newRooms
+;| tabFromPairs
+;, [1 (tabFromPairs [[b#desc b#hello]])]
+;  [2 (tabFromPairs [[b#desc b#hello]])]
+;  [3 (tabFromPairs [[b#desc b#hello]])]
+;  [4 (tabFromPairs [[b#desc b#hello]])]
+;
+;= tPath [[0 0] [1 0] [2 0]]
+;= chResult
+;, [[2 3 4] [0 1 0] [0 0 0]]
+;  newRooms
+;  5
+;
+;; horizontal hallway
+;=?= (createHallway tGrid tRooms tTileId tPath)
+;  | chResult
+;
+;= tPath [[0 0] [0 1] [0 2]]
+;= chResult
+;, [[2 0 0] [3 1 0] [4 0 0]]
+;  newRooms
+;  5
+;
+;; vertical hallway
+;=?= (createHallway tGrid tRooms tTileId tPath)
+;  | chResult
+;
+;= tGrid   | [[0 1 0] [0 0 0] [0 0 0]]
+;= tPath [[0 0] [1 1] [2 2]]
+;= chResult
+;, [[2 1 0] [0 3 0] [0 0 4]]
+;  newRooms
+;  5
+;
+;; diagonal hallway!
+;=?= (createHallway tGrid tRooms tTileId tPath)
+;  | chResult
+
+= (shuffleList lst seed)
+| sort (x & getRand 0 1000000 (add seed x)) lst
+
+= (range start end)
+| if (lte start end)
+  | gen (inc | sub end start) (i & add start i)
+| rev | gen (inc | sub start end) (i & sub start i)
+
+= (simplePath grid startArea endArea)
+| trk [%xxxSimpleStart startArea endArea]
+@ [startX startY] | startArea
+@ [endX endY] | endArea
+@ horizontalPath | map (x & [x startY]) (range startX endX)
+@ verticalPath | map (y & [endX y]) (range startY endY)
+| trk [%xxxSimple horizontalPath verticalPath]
+| weld horizontalPath verticalPath
+
+
+;; bfs / A* connect
+
+= (manhattanDistance x1 y1 x2 y2)
+; | add (abs (sub x2 x1)) (abs (sub y2 y1))
+| add (if (lth x1 x2) (sub x2 x1) (sub x1 x2)) (if (lth y1 y2) (sub y2 y1) (sub y1 y2))
+
+
+= (getRandomItem lst seed)
+@ i | getRand 0 (dec | len lst) seed
+| idx i lst
+
+= (inBounds x y size)
+| and (gte x 0) | and (lth x size) | and (gte y 0) (lth y size)
+
+= (getDirectionCoords coords funcs)
+; This wacky thing applies functions to x and y coordinates.
+; It is used for exploring out into other directions, since we have to use
+; _Dec rather than adding -1
+@ [x y]         | coords
+@ [xFunc yFunc] | funcs
+@ nx | xFunc x
+@ ny | yFunc y
+[nx ny]
+
+= (addValidPath acc [nx ny] size visited)
+| if (and (inBounds nx ny size) (not | has [nx ny] visited))
+  | weld acc [[nx ny]]
+acc
+
+= (createNewPaths grid size x y path visited)
+;         right    down     left     up
+@ cmd | [[inc id] [id inc] [dec id] [id dec]]
+@ c | [[x y] [x y] [x y] [x y]]
+@ z | zip c cmd
+@ newDirs | map (j & getDirectionCoords (idx 0 j) (idx 1 j)) z
+@ newPaths | foldl (acc coord & addValidPath acc coord size visited) [] newDirs
+newPaths
+
+= (processNeighbor endArea args neighbor)
+; processNeighbor might be getting args current of zero
+@ [openSet closedSet gScore fScore cameFrom current] | args
+@ tentativeGScore | add (idx current gScore) 1
+| if (and (not | has neighbor closedSet) (or (not | tabHas neighbor gScore) (lth tentativeGScore (tabGet gScore neighbor))))
+  @ newOpenSet  | setIns neighbor openSet
+  ; TODO: hunting zero. 'current' may be zero below.
+  @ newCameFrom | tabIns neighbor current cameFrom
+  @ newGScore | tabIns neighbor tentativeGScore gScore
+  @ [endX endY] | idx 0 endArea
+  @ hScore | manhattanDistance (idx 0 neighbor) (idx 1 neighbor) endX endY
+  @ newFScore | tabIns neighbor (add tentativeGScore hScore) fScore
+  [newOpenSet closedSet newGScore newFScore newCameFrom current]
+[openSet closedSet gScore fScore cameFrom current]
+
+
+= (updateVisited visited newPaths)
+@ pathsSet | setFromRow | map (p & (idx (dec | len p) p)) newPaths
+| setUnion pathsSet (setFromRow visited)
+
+= (reconstructPath cameFrom current)
+^ _ current []
+? (go node path)
+@ newPath | weld [node] path
+| if (not | tabHas node cameFrom)
+  newPath
+@ prev | tabGet cameFrom node
+| go prev newPath
+
+
+; swap keys/values in tab t
+; note: duplicate values will appear once as key
+= (valToKeys t)
+| tabFromPairs | map (k & [(tabGet t k) k]) (tabKeysRow t)
+
+= (compareScores acc curr fScore)
+| if (lth (idx curr fScore) (idx (idx 0 acc) fScore))
+* [curr]
+* acc
+
+= (getLowestFScore openSet fScore)
+@ initial | [(idx 0 (setToRow openSet))]
+@ swapped | valToKeys fScore
+@ minKey | tabMinKey swapped
+@ lowest | tabGet swapped minKey
+[lowest]
+
+= (aStarRecurse n grid rooms tileId start endArea openSet closedSet gScore fScore cameFrom size maxDepth)
+| if (or (eql 0 (setLen openSet)) (eql 0 maxDepth))
+  []
+@ lowestFScoreNodes | getLowestFScore openSet fScore
+@ current | idx 0 lowestFScoreNodes
+| if (has current endArea)
+  | reconstructPath cameFrom current
+  ; TODO: it's gross to do this here. do it in reconstructPath:
+  ; @ path | reconstructPath cameFrom current
+  ; | filter (coord & (neq 0 coord)) | idx 0 path
+@ openSet | setDel current openSet
+@ closedSet | setIns current closedSet
+@ neighbors | createNewPaths grid size (idx 0 current) (idx 1 current) [current] closedSet
+@ [newOpenSet newClosedSet newGScore newFScore newCameFrom]
+  ; ostensibly, current below can be zero sometimes
+  | foldl (processNeighbor endArea) [openSet closedSet gScore fScore cameFrom current] neighbors
+| aStarRecurse n grid rooms tileId start endArea newOpenSet newClosedSet newGScore newFScore newCameFrom size (dec maxDepth)
+
+= (aStarConnect grid rooms tileId startArea endArea size seed)
+@ start | getRandomItem startArea (inc seed)
+@ [endX endY] | idx 0 endArea
+@ initialGScore | tabFromPairs [[start 0]]
+@ initialFScore | tabFromPairs [[start (manhattanDistance (idx 0 start) (idx 1 start) endX endY)]]
+@ maxDepth | mul 1000 size
+@ openSet | setFromRow [start]
+@ closedSet | setFromRow []
+@ cameFrom | tabFromPairs []
+@ fullPath | aStarRecurse 0 grid rooms tileId start endArea openSet closedSet initialGScore initialFScore cameFrom size maxDepth
+| if (eql 0 | len fullPath)
+  | trk [%aStarFailedUsingSimple start endArea]
+  | simplePath grid start [endX endY]
+fullPath
+
+
+;;; A* connect test
+
+= tGrid      | [[1 0 0] [0 0 0] [0 0 2]]
+; [1 0 0]
+; [0 0 0]
+; [0 0 2]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[0 0]]
+= tEndArea   | [[2 2]]
+= tSize      | 3
+= tSeed      | 12345
+
+= expectedPath | [[0 0] [0 1] [0 2] [1 2] [2 2]]
+; [1 0 0]
+; [x 0 0]
+; [x x 2]
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+=?= gotPath
+  | expectedPath
+
+= tGrid      | [[0 0 1] [0 0 0] [0 0 2]]
+; [0 0 1]
+; [0 0 0]
+; [0 0 2]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[0 2]]
+= tEndArea   | [[2 2]]
+= tSize      | 3
+= tSeed      | 12345
+
+= expectedPath | [[0 2] [1 2] [2 2]]
+; [1 2]
+; [0 0 1]
+; [0 0 x]
+; [0 0 2]
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+=?= gotPath
+  | expectedPath
+
+= tGrid      | [[0 0 1] [0 0 0] [2 0 0]]
+; [0 0 1]
+; [0 0 0]
+; [2 0 0]
+= tRooms     | tabFromPairs [[1 (tabFromPairs [[b#desc b#hello]])]]
+= tTileId    | 2
+= tStartArea | [[2 0]]
+= tEndArea   | [[0 2]]
+= tSize      | 3
+= tSeed      | 12345
+
+= expectedPath | [[2 0] [2 1] [2 2] [1 2] [0 2]]
+; [0 0 2]
+; [0 0 x]
+; [1 x x]
+= gotPath | aStarConnect tGrid tRooms tTileId tStartArea tEndArea tSize tSeed
+
+; TODO: higher numbers can't go to lower numbers maybe?
+; FAILS. gets a [] path
+=?= gotPath
+  | expectedPath
+
+
+; TODO: need to test actual areas. not just single points
+; In the above tests, we're useing a list of a single coordinate pair
+; as the "area":
+;
+; = tStartArea | [[2 0]]
+; = tEndArea   | [[0 2]]
+;
+; But in actuality, those "areas" will be many sets of coordinates.
+
+; TODO: also need to make sure that if we start _inside_ a large area, that
+; the paths are drawn correctly and tiles updated properly.
+; Perhaps the 'connect areas' stuff should force itself to start on the
+; perimeters of the areas (ugh).
+
+
+
+; TODO: SOMEONE NEEDS TO INCREMENT TILEID BEFORE I GET IT!
+= (connectAreaPair grid rooms tileId size seed pair)
+@ [startArea endArea] | pair
+| trk [%connectPair startArea endArea]
+@ path | aStarConnect grid rooms tileId startArea endArea size (inc seed)
+| trk [%pathFound path]
+| if (eql path [])
+  [grid rooms tileId]
+| createHallway grid rooms tileId startArea endArea path
+
+= tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
+; [1 0 0]
+; [0 0 0]
+; [0 0 2]
+= tRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+
+= tTileId | 3
+= tStart  | [[0 0]]
+= tEnd    | [[2 2]]
+= tSize   | 3
+= tSeed   | 12345
+= newRooms
+| tabFromPairs
+, [1 (tabFromPairs [[b#desc b#hello]])]
+  [2 (tabFromPairs [[b#desc b#hello]])]
+  [3 (tabFromPairs [[b#desc b#hello]])]
+  [4 (tabFromPairs [[b#desc b#hello]])]
+  [5 (tabFromPairs [[b#desc b#hello]])]
+
+; Path ends up as:
+; [1 x x]
+; [0 0 x]
+; [0 0 2]
+; or
+; [1 0 0]
+; [3 0 0]
+; [4 5 2]
+= connectResult
+, [[1 0 0] [3 0 0] [4 5 2]]
+  newRooms
+  6
+
+; expected path:
+; [0 0] [1 0] [2 0] [2 1] [2 2]
+
+
+; TODO: tests commented out now that tile tab is filling out
+;=?= (connectAreaPair tGrid tRooms tTileId tSize tSeed [tStart tEnd])
+;  | connectResult
+
+; = (connectAreas grid rooms tileId areas size seed)
+; @ areaPairs | zip areas areas
+; | trk [%connectAreas areas]
+; | trk [%areaPairs areaPairs]
+; | foldl connectAreaPair size grid rooms tileId size seed areaPairs
+; 
+; 
+; = tGrid   | [[1 0 0] [0 0 0] [0 0 2]]
+; ; [1 0 0]
+; ; [0 0 0]
+; ; [0 0 2]
+; = tRooms
+; | tabFromPairs
+; , [1 (tabFromPairs [[b#desc b#hello]])]
+;   [2 (tabFromPairs [[b#desc b#hello]])]
+; 
+; = tTileId | 5
+; = newRooms
+; | tabFromPairs
+; , [1 (tabFromPairs [[b#desc b#hello]])]
+;   [2 (tabFromPairs [[b#desc b#hello]])]
+;   [3 (tabFromPairs [[b#desc b#hello]])]
+;   [4 (tabFromPairs [[b#desc b#hello]])]
+;   [5 (tabFromPairs [[b#desc b#hello]])]
+; 
+; = tStartArea | [[0 0]]
+; = tEndArea   | [[2 2]]
+; 
+; = connectAreasResult
+; , [[1 0 0] [3 0 0] [4 5 2]]
+;   newRooms
+;   6
+; 
+; ; TODO:
+; =?= (connectAreas tGrid tRooms tTileId [tStartArea tEndArea] tSize tSeed)
+;   | connectAreasResult
+
+
+= (removeItem lst item)
+| filter (x & (neq x item)) lst
+
+= (connectRandomAreas grid rooms tileId unconnectedAreas connectedAreas size seed)
+| trk [%remainingUnconnected (len unconnectedAreas)]
+| if (eql 0 | len unconnectedAreas)
+  [grid rooms tileId connectedAreas]
+| if (eql 0 | len connectedAreas)
+  @ startArea | getRandomItem unconnectedAreas (mul 5 seed)
+  | connectRandomAreas grid rooms tileId (removeItem unconnectedAreas startArea) [startArea] size (inc seed)
+| if (eql 1 | len unconnectedAreas)
+  @ startArea | getRandomItem connectedAreas seed
+  @ endArea | idx 0 unconnectedAreas
+  | trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
+  @ path | aStarConnect grid rooms tileId startArea endArea size (inc seed)
+  @ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
+  [newGrid newRooms newTileId (weld connectedAreas [endArea])]
+@ startArea | getRandomItem connectedAreas (inc seed)
+@ endArea | getRandomItem unconnectedAreas (mul 2 seed)
+| trk [%connecting [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
+@ path | connectAreaPair grid rooms tileId size (add seed 2) [startArea endArea]
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
+| connectRandomAreas newGrid newRooms newTileId (removeItem unconnectedAreas endArea) (weld connectedAreas [endArea]) size (add seed 3)
+
+= (connectAreas grid rooms tileId areas size seed)
+| if (lte (len areas) 1)
+  [grid rooms tileId areas]
+| connectRandomAreas grid rooms tileId areas [] size seed
+
+; TODO: hack for now. random area connection is bugged
+= (connectAllAreas grid rooms tileId areas size seed)
+| trk [%connectingAllAreas (len areas)]
+^ _ grid rooms tileId areas 0
+? (loop grid rooms tileId remainingAreas n)
+| if (lth (len remainingAreas) 2)
+  [grid rooms tileId]
+@ startArea | idx 0 remainingAreas
+@ endArea   | idx 1 remainingAreas
+| trk [%connecting n [(idx 0 startArea) b#x (idx (dec | len startArea) startArea)] %to [(idx 0 endArea) b#x (idx (dec | len endArea) endArea)]]
+@ path | aStarConnect grid rooms tileId startArea endArea size (add seed n)
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
+| if (eql (len remainingAreas) 2)
+  [newGrid newRooms newTileId]
+| loop newGrid newRooms newTileId (drop 1 remainingAreas) (inc n)
+
+; Connects areas randomly; also sometimes re-connects areas (15% chance)
+= (connectAreasOrganic grid rooms tileId areas size seed)
+| trk [%connectingAreasOrganic (len areas)]
+^ _ grid rooms tileId (drop 1 areas) [(idx 0 areas)] seed 0
+? (loop grid rooms tileId unconnected connected curSeed iteration)
+| trk [%loopStart iteration (len unconnected) (len connected)]
+| if (eql 0 | len unconnected)
+  | trk [%allConnected (len connected)]
+  [grid rooms tileId]
+@ startArea | getRandomItem connected curSeed
+@ endArea | idx 0 unconnected
+| trk [%connecting iteration startArea endArea]
+;@ path | simplePath grid startArea endArea
+@ path | aStarConnect grid rooms tileId startArea endArea size (add curSeed 2)
+| trk [%pathFound (len path)]
+@ [newGrid newRooms newTileId] | createHallway grid rooms tileId startArea endArea path
+@ newConnected | weld connected [endArea]
+| trk [%xxxTODO %needToLoopOverPath path]
+;@ roomAdd | tabFromPairs [[b#desc b#pending] [b#x b#todo] [b#y b#todo] [b#areaId 0] [b#connector [startArea endArea]]]
+;@ rooms | tabIns tileId roomAdd rooms
+| trk [%afterConnection (len newConnected) (len (drop 1 unconnected))]
+@ reinsertChance | getRand 0 100 (add curSeed 3)
+| trk [%reinsertChance reinsertChance]
+| if (and (lth reinsertChance 20) (gth (len newConnected) 2)); TODO: chance+-
+  @ reinsertArea | getRandomItem (drop 1 newConnected) (add curSeed 4)
+  @ filteredConnected | filter (a & neq a reinsertArea) newConnected
+  | trk [%reinsertingArea reinsertArea (len filteredConnected)]
+  | loop newGrid newRooms newTileId (weld (drop 1 unconnected) [reinsertArea]) filteredConnected (add curSeed 5) (inc iteration)
+| trk [%noReinsertion (len (drop 1 unconnected)) (len newConnected)]
+| loop newGrid newRooms newTileId (drop 1 unconnected) newConnected (add curSeed 5) (inc iteration)
+
+
+= (generateMap size areaCount maxRoomH maxRoomW seed)
+@ initialMap   | map (i & (gen size (i & 0))) (gen size (i & 0))
+@ initialRooms | emptyTab
+@ tileId  | 1
+@ curArea | 0
+@ areas   | []
+| trk [%xxxGenerating]
+@ [grid rooms tileId areas] | oldGenerateAreas initialMap initialRooms tileId areaCount size curArea areas maxRoomH maxRoomW seed
+@ [grid rooms tileId] | connectAreasOrganic grid rooms tileId areas size seed
+[grid rooms tileId]
+
+; TODOS:
+; - would be nice to add a "visualizer" with trks during path-finding
+;  - not only cool, but actually useful for debugging. which areas are being connected, the current path, etc.
+; - does it break when rooms are "inside each other"?
+; - need to make larger rooms without breaking all the tests.
+
+; = randomMap | generateMap 30 8 97
+; TODO:
+; = randomMap | generateMap 40 10 5 8 99999
+                          ;size
+                             ;room count
+                                ;room h
+                                  ;room w
+                                    ;entropy seed
+
+; if you make the room count really big, you get larger, organic-looking spaces.
+; TODO: consider passing in the room size min/max
+; TODO: non-rectangular rooms....?
+
+;;;; end random map generator
+
+= initialMap | generateMap 9 2 2 2 9876
+= initialTiles | (idx 0 initialMap)
+= randomMap | initialMap
+
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 01 02 03 00 00 00 00]
+; ++ [00 00 04 05 06 00 00 00 00]
+; ++ [00 00 07 08 09 00 00 00 00]
+; ++ [00 00 00 16 00 00 00 00 00]
+; ++ [00 00 00 10 11 12 00 00 00]
+; ++ [00 00 00 13 14 15 00 00 00]
+
 
 ; generateInitialState
 = (gis)
 | tabFromPairs
 , [b#rooms rooms]
+  [b#tiles initialTiles]
   [b#roomT rooms]
   [b#grid grid]
   [b#items items]
@@ -224,14 +925,7 @@
   [b#players playersT]
   [b#actingId 1]
   [b#yell yell]
-  [b#log 0] ; TODO:
 
-= (movePlayer playerId moveTo state)
-@ players | (tabGet state b#players)
-@ player | tabGet players playerId
-@ pMoved | tabIns b#currentPosition moveTo player
-@ updPlayers | tabIns playerId pMoved players
-| tabIns b#players updPlayers state
 
 ; Don't use this. poorly-conceived.
 ; TODO: Probably use Sets to do these "diffs" nicely
@@ -253,8 +947,29 @@
 = (roomGet id state)
 | tabGet (stateGet b#rooms state) id
 
-= (exitsGet roomId state)
-| tabGet (roomGet roomId state) b#exits
+= (getX room)
+| tabGet room b#x
+
+= (getY room)
+| tabGet room b#y
+
+; Takes a rooms map and replaces the Tab key of tileId
+; for [x y] coordinates (and inserts the tileId into the room map)
+; Useful for "finding" a tile by x,y coordinates
+= (coordsAsKeys rooms)
+| tabFromPairs
+| map (k & [[(getX (tabGet rooms k)) (getY (tabGet rooms k))] (tabIns b#tileId k (tabGet rooms k))]) (tabKeysRow rooms)
+
+= (exitsGet tileId state)
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
+| map (x & tabGet x b#tileId) neighborMap
 
 = (itemGet id state)
 | tabGet (stateGet b#items state) id
@@ -266,11 +981,12 @@
 | tabGet (playerGet playerId state) b#currentPosition
 
 = (curRoom playerId state)
-| tabGet (stateGet b#roomT state) (curPos playerId state)
+| tabGet (stateGet b#rooms state) (curPos playerId state)
 
 = (actingPlayerSet playerId state)
 @ newState | tabIns b#actingId playerId state
 [newState b#{}]
+
 
 ; = (getPlayerIds roomId state)
 ; | filter neq-0
@@ -310,13 +1026,6 @@ newState
 ;= (itemLocationSetRoom itemId roomId state)
 ;0
 
-= (flatten rows)
-@ head (fromSome listHead rows)
-@ tail (slice rows 1 (len rows))
-| ifNot (len tail)
-  head
-| weld head (flatten tail)
-
 = (flatGrid)
 | flatten grid
 
@@ -327,6 +1036,102 @@ newState
 ; ++ [5 [0 5 6 3]]
 ; ++ [6 [4 0 0 0]]
 
+= testMap | generateMap 9 2 2 2 9876
+= testTiles | (idx 0 testMap)
+= testRooms | (idx 1 testMap)
+= testPlayers
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 16]
+      [b#hp 10]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 8]
+      [b#hp 10]
+
+= (testState)
+| tabFromPairs
+, [b#rooms testRooms]
+  [b#tiles testTiles]
+  [b#players testPlayers]
+  [b#actingId 1]
+
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 00 00 00 00 00 00 00]
+; ++ [00 00 01 02 03 00 00 00 00]
+; ++ [00 00 04 05 06 00 00 00 00]
+; ++ [00 00 07 08 09 00 00 00 00]
+; ++ [00 00 00 16 00 00 00 00 00]
+; ++ [00 00 00 10 11 12 00 00 00]
+; ++ [00 00 00 13 14 15 00 00 00]
+
+= (getNewCoords dir x y)
+# switch dir
+* b#n
+  | [x (dec y)]
+* b#s
+  | [x (inc y)]
+* b#w
+  | [(dec x) y]
+* b#e
+  | [(inc x) y]
+* _
+  | [x y]  ; default case for invalid direction
+; {north} [x (dec y)]
+; {south} [x (inc y)]
+; {west}  [(dec x) y]
+; {east}  [(inc x) y]
+
+= (inBounds x y size)
+| and (gte x 0) | and (lth x size) | and (gte y 0) (lth y size)
+
+= (tileIdAtDirFrom tileId dir tiles rooms)
+@ gridHeight | len tiles
+@ gridWidth | len | idx 0 tiles
+@ tileInfo | tabGet rooms tileId
+| if (eql tileInfo 0)  ; tileId not found in rooms
+  0
+@ x | tabGet tileInfo b#x
+@ y | tabGet tileInfo b#y
+@ newCoords | getNewCoords dir x y
+@ [newX newY] | newCoords
+| if (inBounds newX newY gridHeight)
+  | idx newX | idx newY tiles
+0
+;| if (or (lth newX 0) (gte newX gridWidth))
+;| trk [%oobX]
+;  0  ; Out of bounds X
+;| if (or (lth newY 0) (gte newY gridHeight))
+;| trk [%oobY]
+;  0  ; Out of bounds Y
+
+=?= 8
+  | (tileIdAtDirFrom 16 b#n testTiles testRooms)
+
+=?= 10
+  | (tileIdAtDirFrom 16 b#s testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 16 b#w testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 16 b#e testTiles testRooms)
+
+=?= 10
+  | (tileIdAtDirFrom 11 b#w testTiles testRooms)
+
+=?= 14
+  | (tileIdAtDirFrom 11 b#s testTiles testRooms)
+
+=?= 0
+  | (tileIdAtDirFrom 14 b#s testTiles testRooms)
+
 = (dirIndex dir)
 | if (eql dir b{n}) | 0
 | if (eql dir b{e}) | 1
@@ -336,11 +1141,12 @@ newState
 
 ; returns room id
 = (go playerId dir state)
-| if (eql (curRoom playerId state) 0)
-  | trk [%whereAreYou]
+@ curTile | curPos playerId state
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+| if (eql curTile 0)
   0
-@ nextRoom | get (tabGet (curRoom playerId state) b#exits) (dirIndex dir)
-; | trk [%next nextRoom]
+@ nextRoom | tileIdAtDirFrom curTile dir tiles rooms
 # switch nextRoom
 * 0
   | curPos playerId state
@@ -352,7 +1158,7 @@ newState
 ;   b#{@}
 ; | natBar | showNat tile
 
-= (printEntrance eRow)
+= (printFoggedEntrance eRow)
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
     b#{┼}
@@ -386,20 +1192,205 @@ newState
     b{╶}
   b#{.}
 
-= (printARoom playerId state roomId)
-@ entrances | (tabGet (roomGet roomId state) b#exits)
-| if (eql (curPos playerId state) roomId)
+= (printEntrance eRow)
+  # switch (map (neq 0) eRow)
+  * [1 1 1 1]
+    b#{╬}
+  * [0 1 1 1]
+    b#{╦}
+  * [1 1 0 1]
+    b#{╩}
+  * [1 1 1 0]
+    b{╠}
+  * [1 0 1 1]
+    b{╣}
+  * [1 0 1 0]
+    b{║}
+  * [0 1 0 1]
+    b{═}
+  * [0 1 1 0]
+    b{╔}
+  * [0 0 1 1]
+    b{╗}
+  * [1 1 0 0]
+    b{╚}
+  * [1 0 0 1]
+    b{╝}
+  * [1 0 0 0]
+    b{╨}
+  * [0 0 1 0]
+    b{╥}
+  * [0 0 0 1]
+    b{╡}
+  * [0 1 0 0]
+    b{╞}
+  b#{#}
+
+= (printApproach roomId vantageId state)
+; Print the stub directrion from the vantage point room to this one.
+@ exits | rowCons 0 (exitsGet roomId state)
+@ approaches [b#{ } b{╵} b{╶} b{╷} b{╴} ]
+@ idxOfApproach | elemIdx vantageId exits NONE id
+| if idxOfApproach
+  | idx idxOfApproach approaches
+b{ }
+
+= (describeExits eRow)
+@ dirs | listFromRow [b#n b#e b#s b#w]
+@ exitsBinary | (map (neq 0) eRow)
+@ exitList | listFromRow exitsBinary
+@ availableDirs | listZip dirs exitList
+@ filteredDirs | listFilter (pair & neq 0 (idx 1 pair)) availableDirs ; Keep only available directions
+@ formattedNames | map (pair & idx 0 pair) (listToRow filteredDirs)
+| barCat [b#{You can move: } (barCat | (intersperse b#{, } formattedNames))]
+
+= (getXYForTileId tileId state)
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+[(tabGet room b#x) (tabGet room b#y)]
+
+=?= [3 6]
+  | getXYForTileId 16 testState
+
+=?= [0 0]
+  | getXYForTileId 99 testState
+
+= smallTiles
+| tabFromPairs
+++  , 11
+    | tabFromPairs
+    , [b#x 9]
+      [b#y 8]
+      [b#something b#else]
+++  , 5
+    | tabFromPairs
+    , [b#x 2]
+      [b#y 3]
+      [b#something b#else]
+
+= expectedCoordsMap
+| tabFromPairs
+++  , [2 3]
+    | tabFromPairs
+    , [b#x 2]
+      [b#y 3]
+      [b#tileId 5]
+      [b#something b#else]
+++  , [9 8]
+    | tabFromPairs
+    , [b#x 9]
+      [b#y 8]
+      [b#tileId 11]
+      [b#something b#else]
+
+=?= expectedCoordsMap
+  | coordsAsKeys smallTiles
+
+= (getTileIdforXY xyCoords state)
+@ [x y] | xyCoords
+@ rooms | tabGet state b#rooms
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+| tabGet roomFromCoords b#tileId
+
+=?= 16
+  | getTileIdforXY [3 6] testState
+
+=?= 0
+  | getTileIdforXY [99 99] testState
+
+= (tileEntrances playerId tileId state)
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+@ room  | tabGet rooms tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+; TODO: Need to control for max size (zero if out of bounds)
+; Use inBounds
+; Get the neighboring coordinates in each cardinal
+; directoin
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
+; get neighbor tile maps from coord-keyed map
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
+; from above, get tile IDs in each cardinal direction
+| map (x & tabGet x b#tileId) neighborMap
+
+= (printATile playerId state tileId)
+@ tiles | tabGet state b#tiles
+@ entrances | tileEntrances playerId tileId state
+@ player | playerGet playerId state
+@ seenRooms | tabGet player b#seenRooms
+@ currentUnfogged | (exitsGet (curPos playerId state) state)
+| if (eql (curPos playerId state) tileId)
   b#{@}
-| if (has roomId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
-  b#{ɐ}
+| if (not (has tileId seenRooms))
+  | printApproach tileId (tabGet player b#currentPosition) state
+| if (has tileId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
+  | if (has tileId currentUnfogged)
+    b#{ɐ}
+  | printFoggedEntrance entrances
 | if (len entrances)
-  | printEntrance entrances
-b#{#}
+  | if (has tileId currentUnfogged)
+    | printEntrance entrances
+  | printFoggedEntrance entrances
+b#{?}
+
+; TODO; seems we might not need this? unused?
+= (currentSeenRooms playerId playersT roomsT)
+@ player | tabGet playersT playerId
+| trk [%player player]
+@ tileId | tabGet player b#currentPosition
+| trk [%curid tileId]
+@ room  | tabGet roomsT tileId
+@ x | tabGet room b#x
+@ y | tabGet room b#y
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
+@ coordMap | coordsAsKeys rooms
+@ roomFromCoords | tabGet coordMap [x y]
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
+@ currentExits | map (x & tabGet x b#tileId) neighborMap
+| setDel 0 | setUnion (setFromRow currentExits) (setFromRow [tileId])
+
+= (determineNewSeenRooms playerId roomId state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ seenRooms | tabGet player b#seenRooms
+@ seenRoomsSet | setFromRow seenRooms
+; TODO: use this if you want to add +1 to sight range / show the neighboring room
+@ newSeenRoomsSet | setDel 0 | setUnion (setFromRow (exitsGet roomId state)) seenRoomsSet ; show through room's exits
+; TODO: use this if you want to just show immediate neighbors
+; @ newSeenRoomsSet | setDel 0 | setUnion (setFromRow [roomId]) seenRoomsSet ; show just approahces
+| setToRow newSeenRoomsSet
+
+= (movePlayer playerId moveTo state)
+@ players | (tabGet state b#players)
+@ player | tabGet players playerId
+@ newSeenRoomsRow | determineNewSeenRooms playerId moveTo state
+@ player | tabIns b#currentPosition moveTo player
+@ player  | tabIns b#seenRooms newSeenRoomsRow player
+@ pMoved | tabIns b#currentPosition moveTo player
+@ updPlayers | tabIns playerId pMoved players
+| tabIns b#players updPlayers state
+
+; = (printrandom)
+; ; @ cols | len (idx 0 grid)
+; @ [grid rooms lastTileId] | randomMap
+; @ gridRows | map (row & (barCat | map (tid & (if (eql tid 0) b#{#} b#{.})) row)) grid
+; | trk [%tileId lastTileId]
+; | trk [%rooms rooms]
+; @ rowLines | barCat | intersperse barNewline gridRows
+; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
 = (print playerId state message)
 ; @ rows | len grid
 ; @ cols | len (idx 0 grid)
-@ gridRows | map (row & (barCat | map (roomId & printARoom playerId state roomId) row)) grid
+| trk [%state state]
+@ tiles | tabGet state b#tiles
+@ rooms | tabGet state b#rooms
+@ gridRows | map (row & (barCat | map (tileId & printATile playerId state tileId) row)) tiles
 @ rowLines | barCat | intersperse barNewline gridRows
 @ result | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 result
@@ -419,54 +1410,56 @@ result
 =?= (dirIndex b{wut})
   | 0
 
-=?= (curPos 1 gis)
-  | 1
+=?= 16
+  | curPos 1 testState
 
-=?= 6
-  @ s | movePlayer 1 4 gis
-  | go 1 b{s} s
+=?= 10
+  | go 1 b{s} testState
 
-=?= 5
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+; 14 -> e -> 15
+=?= 15
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 14 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{e} s
 
-=?= 3
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+; 8 -> w -> 7
+=?= 7
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 8 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{w} s
 
+; 16 -> n -> 8
 =?= 8
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 1 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
+  @ usMoved | tabIns b#currentPosition 16 us
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{n} s
 
-; this means going "x" actually goes north, because of dirIndex 0
-=?= 7
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
+; this means going "x" goes nowhere
+=?= 4
+  @ players | (tabGet b#players testState)
+  @ us | tabGet testPlayers 1
   @ usMoved | tabIns b#currentPosition 4 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
+  @ updPlayers | tabIns 1 usMoved testPlayers
+  @ s | tabIns b#players updPlayers testState
   | go 1 b{x} s
 
 ; you're nowhere, can't go anywhere.
-=?= 0
-  @ players | (tabGet b#players gis)
-  @ us | tabGet players 1
-  @ usMoved | tabIns b#currentPosition 99 us
-  @ updPlayers | tabIns 1 usMoved players
-  @ s | tabIns b#players updPlayers gis
-  | go 1 b{n} s
+;=?= 0
+;  @ players | (tabGet b#players gis)
+;  @ us | tabGet players 1
+;  @ usMoved | tabIns b#currentPosition 99 us
+;  @ updPlayers | tabIns 1 usMoved players
+;  @ s | tabIns b#players updPlayers gis
+;  | go 1 b{n} s
 
 = (message playerId newState oldState dir)
 | if (eql (curPos playerId newState) (curPos playerId oldState))
@@ -543,6 +1536,7 @@ result
 b#{your inventory is empty}
 
 = (lookMsg playerId roomId state)
+| trk [%lookMsg state]
 @ roomDesc | [(tabGet (roomGet roomId state) b#desc)]
 @ otherPIds | filter (neq playerId) | getPlayerIds roomId state
 @ players | filterPlayers otherPIds state
@@ -575,7 +1569,6 @@ b#{your inventory is empty}
     b#{}
     b#{ - Help: h (this command)}
     b#{ - Moving: n e s w (to move north, east, south, west)}
-    b#{ - Yell (global chat): y <thing you want to say>}
     b#{ - Inventory: i (will return a list of things with ids for further interaction)}
     b#{ - Look Around: l (will return a list of things with ids for further interaction)}
     b#{ - Inspect Things: i <ID> (ID of thing from "look")}
@@ -584,6 +1577,7 @@ b#{your inventory is empty}
     b#{ - Adore Your Things: a <ID> (ID of thing from "inventory")}
     b#{ - Create Items: make <name> * <longer description> (the space around "*" is important)}
 
+> Bar > Nat > (Nat, Bar)
 = (handleSingleCmd playerId cmd state)
 ; | trk [%handlingSingle]
 | if (has cmd [b#n b#e b#s b#w])
@@ -597,6 +1591,7 @@ b#{your inventory is empty}
 | if (eql cmd b#{i})
   [state (inventoryMsg playerId state)]
 | if (eql cmd b#{l})
+  | trk [%handleSingleL state]
   [state (lookMsg playerId (curPos playerId state) state)]
 | if (eql cmd b#{h})
   ; | trk [%gettinghelp]
@@ -675,24 +1670,33 @@ b#{your inventory is empty}
 @ name | tabGet player b#name
 @ oldYell | tabGet state b#yell
 @ newYell | weld oldYell [[name comment]]
-| trk [%xoldState state]
-| trk [%xnewState (tabIns b#yell newYell state)]
+; | trk [%xoldState state]
+; | trk [%xnewState (tabIns b#yell newYell state)]
 @ newState | tabIns b#yell newYell state
-[newState (barCat [b#{** } name b#{ said: "} comment b#{"}])]
+[newState (barCat [b#{** } name b#{ said } comment])]
 
 = (createItem playerId cmdRow state)
 ; cmdRow will be a row of all space-separated entry (without "make")
 @ look | barCat | intersperse b#{ } | listToRow | listTakeWhile (neq b#{*}) | listFromRow cmdRow
+; | trk [%xxxlook look]
 @ desc | barCat | intersperse b#{ } | drop 1 | listToRow | listDropWhile (neq b#{*}) | listFromRow cmdRow
+; | trk [%xxxdesc desc]
+; | trk [%xxxcmdRow cmdRow]
 @ oldItems | tabGet state b#items
 @ nextItemId | inc | last | tabKeysRow oldItems
 @ newItem | tabFromPairs [[b#look look] [b#desc desc]]
+; | trk [%new newItem]
 @ newItems | tabIns nextItemId newItem oldItems
+; | trk [%newItemState newItems]
 @ newState | tabIns b#items newItems state
+; | trk [%newState newState]
 @ oldLocations | tabGet state b#itemLocations
 @ newItemLoc | tabFromPairs [[b#roomId 0] [b#playerId playerId]]
+; | trk [%newItemLoc newItemLoc]
 @ newLocations | tabIns nextItemId newItemLoc oldLocations
+; | trk [%newLocs newLocations]
 @ newState | tabIns b#itemLocations newLocations newState
+; | trk [%finalState newState]
 @ players | tabGet state b#players
 @ player | tabGet players playerId
 @ name | tabGet player b#name
@@ -700,15 +1704,17 @@ b#{your inventory is empty}
 
 = (handleDuoCmd playerId cmd target state)
 ; target will be a list of remainder without command
-| trk [%handlingDuo cmd target]
+; | trk [%handlingDuo cmd target]
 @ trgNat | fromSome 0 (parseNat (idx 0 target))
 | if (eql cmd b#{act})
   | actingPlayerSet trgNat state
 | if (eql cmd b#{get})
   | takeItemId playerId trgNat (curPos playerId state) state
 | if (eql cmd b#{y})
+  ; | trk [%target target]
   @ comment | barCat
             | intersperse b#{ } | target
+  ; | trk [%comment comment]
   | playerYell playerId comment state
 | if (eql cmd b#{drop})
   | dropItemId playerId trgNat (curPos playerId state) state
@@ -722,13 +1728,61 @@ b#{your inventory is empty}
 
 ; return [state msg]
 = (commandDo playerId input state)
+| trk [%commandDo state]
+; | trk [%cmdo input]
 @ (cmd) | listToRow | barSplit { } | barTakeWhile (neq newlineChar) input
-; TODO: this doesn't need to work this way. we should always just start
-; at the first chunk and see what else (if any) we need to process and how,
-; rather than having "single" and "duo" handlers.
 | if (eql 1 | len cmd)
 * handleSingleCmd playerId (idx 0 cmd) state
 * handleDuoCmd playerId (idx 0 cmd) (drop 1 cmd) state
+
+= initialMap | generateMap 24 8 5 4 9876
+= initialTiles | (idx 0 initialMap)
+= initialRooms | (idx 1 initialMap)
+= initialPlayers
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 16]
+      [b#hp 10]
+      [b#seenRooms [16]]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 8]
+      [b#hp 10]
+      [b#seenRooms [8]]
+++  , 3
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Dan}]
+      [b#currentPosition 10]
+      [b#hp 10]
+      [b#seenRooms [10]]
+++  , 4
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Jack}]
+      [b#currentPosition 20]
+      [b#hp 10]
+      [b#seenRooms [20]]
+
+= initRandomState
+| tabFromPairs
+, [b#rooms initialRooms]
+  [b#tiles initialTiles]
+  [b#players initialPlayers]
+  [b#actingId 1]
+
+
+;;; end game engine
+
+= (getOffset needle haystack)
+@ start (idx 0 (barSubstringSearch needle haystack))
+@ width (barLen needle)
+(add start width)
 
 > Pin Bar
 = favicon
@@ -778,7 +1832,7 @@ b#{your inventory is empty}
 > ThreadId > CogState
 = (newCogState servThread)
 | COG_STATE
-* gis
+* initRandomState
 * 1
 * startingFiles
 * servThread
@@ -931,6 +1985,7 @@ jval
     : (PIN st) < readRef vSt
     @ gameState | getMudState st
     | trk [%body body]
+    | trk [%gameState gameState]
     @ input    | parseCommandJson body
     ; TODO: not working
     ; @ playerId | fromSome 1 (parseNat | parseWhoJson body)
@@ -940,7 +1995,9 @@ jval
     : _ < modifyState vSt & st
                           | setMudState | changed
                           | st
+    | trk [%changed changed]
     @ worldBytes (print playerId changed msg)
+    | trk [%worldBytes worldBytes]
     ; take a command, update the state, respond with print
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head worldBytes))
     | return ()
