@@ -5,40 +5,19 @@
 :| sire
 :| gen
 
-;[ 8] [ 9] [13] [14];
-;[ 1] [ 7] [ 2] [10];
-;[ 3] [ 4] [ 5] [11];
-;[ 0] [ 6] [ 0] [12];
-
-; - refactor rooms tab
-;   - remove roomsT
-;   - just use tiles Tab
-;     - include: area ID, xy coordinates, level number,
-;   - have a function that takes x,y coords and returns its tileID
-;   - have a function that takes a tileId and returns its area ID
-;     - (this is probably just a tabGet on the tiles Tab)
-;   - rework map printing to use this
-; - merge budget visibility
+; x - refactor rooms tab
+; x   - remove roomsT
+; x   - just use tiles Tab
+; x     - include: area ID, xy coordinates, level number,
+; x   - have a function that takes x,y coords and returns its tileID
+; x   - have a function that takes a tileId and returns its area ID
+; x     - (this is probably just a tabGet on the tiles Tab)
+; x   - rework map printing to use this
+; x - merge budget visibility
 ; - then use A* or BFS for line of sight?
 ; TODO for integration:
-; - [ ] add connector tiles to room tab with what areas they connect (useful for
-;       more organic randomly-generated descriptions later
-
-; (idx 0 randomMap) == "grid of tiles"
-
-; TODO / IDEAS
-; - [x] room descriptions
-; - [x] manifest items
-; - [ ] generate stuff in rooms from random tables
-;   - [ ] then add AI...
-; - [ ] doors that open and close
-; - [ ] seen/unseen rooms
-; - [ ] line of sight? (don't show things going on in rooms you can't see)
-; - [ ] sounds?
-; - [ ] range of sound (like line of sight)
-
-; [x] TODO: generate random map.
-
+; - [ ] add connector tiles to room tab with what areas they connect (useful
+;       for more organic randomly-generated descriptions later)
 
 > Bar > Maybe Nat
 = (parseNat bar)

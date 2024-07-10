@@ -1,9 +1,25 @@
 #### demo_cog_mud <- prelude
 
-;[ 8] [ 9] [13] [14];
-;[ 1] [ 7] [ 2] [10];
-;[ 3] [ 4] [ 5] [11];
-;[ 0] [ 6] [ 0] [12];
+; Note to self for running this in staging:
+; - have Alpine.js's mud-ui running in dev mode at :5173
+; - run this cog, note port
+;    - sh/web-demo.sh -d mud -s sire/demo_cog_mud.sire -u ~/code/mud-ui/dist
+;    - (the -u flag above doesn't matter. or does it? is this what is served?)
+; - have a ~/.config/ngrok/ngrok.yml with contents:
+;;;;;;
+;     authtoken: <redacted>
+;     tunnels:
+;         backend:
+;             addr: <cog port>
+;             proto: http
+;             hostname: vinney.ngrok.app
+;         frontend:
+;             addr: 5173
+;             proto: http
+;     version: "2"
+;     region: us
+;;;;;;
+; - visit vinney.ngrok.app
 
 ; TODO / IDEAS
 ; - [x] room descriptions
@@ -12,7 +28,6 @@
 ; - [x] manifest items
 ;   - [ ] add manifester to items
 ; - [ ] create players
-; - [ ] larger map
 ; - [ ] running game log
 ; - [ ] private log
 ; - [ ] chat (local, no history)
