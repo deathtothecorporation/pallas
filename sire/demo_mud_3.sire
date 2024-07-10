@@ -1064,6 +1064,7 @@ newState
 , [b#rooms testRooms]
   [b#tiles testTiles]
   [b#players testPlayers]
+  [b#actingId 1]
 
 ; ++ [00 00 00 00 00 00 00 00 00]
 ; ++ [00 00 00 00 00 00 00 00 00]
@@ -1178,6 +1179,7 @@ newState
 ; | natBar | showNat tile
 
 = (printEntrance eRow)
+  | trk [%xxxEntrance eRow]
   # switch (map (neq 0) eRow)
   * [1 1 1 1]
     b#{┼}
@@ -1209,7 +1211,7 @@ newState
     b{╴}
   * [0 1 0 0]
     b{╶}
-  b#{.}
+  b#{#}
 
 ; = (printARoom playerId state roomId)
 ; @ entrances | (tabGet (roomGet roomId state) b#exits)
@@ -1290,9 +1292,10 @@ newState
 =?= 0
   | getTileIdforXY [99 99] testState
 
-= (tileEntrances tileId state)
+= (tileEntrances playerId tileId state)
 @ tiles | tabGet state b#tiles
 @ rooms | tabGet state b#rooms
+| trk [%xxxRooms rooms]
 @ room  | tabGet rooms tileId
 @ x | tabGet room b#x
 @ y | tabGet room b#y
@@ -1300,18 +1303,20 @@ newState
 @ roomFromCoords | tabGet coordMap [x y]
 ; TODO: Need to control for max size (zero if out of bounds)
 ; Use inBounds
-@ neighborCoords | [[x (dec y)] [x (inc y)] [(dec x) y] [(inc x) y]]
+@ neighborCoords | [[x (dec y)] [(inc x) y] [x (inc y)] [(dec x) y]]
 ; TODO; neighborcoords is wrong
 | trk [%xxxNeighborCoords neighborCoords]
-@ neighborMap | map (coord & tabGet coordMap coord) neighborCoords
+; [%xxxNeighborCoords [[5 7] [5 9] [4 8] [6 8]]]
+@ neighborMap | map (coords & tabGet coordMap coords) neighborCoords
 | trk [%xxxCM coordMap]
-| trk [%xxxNeighbors neighborMap]
-| map (tileId & tabGet rooms tileId) neighborMap
+| trk [%xxxTID tileId]
+| trk [%xxxNM neighborMap]
+| trk [%xxxTP (map (x & tabGet x b#tileId) neighborMap)]
+| map (x & tabGet x b#tileId) neighborMap
 
 = (printATile playerId state tileId)
 @ tiles | tabGet state b#tiles
-| trk [%tiles tiles]
-@ entrances | tileEntrances tileId state
+@ entrances | tileEntrances playerId tileId state
 | if (eql (curPos playerId state) tileId)
   b#{@}
 | if (has tileId (tabGetValsOfKey (stateGet b#players state) b#currentPosition))
@@ -1333,10 +1338,10 @@ b#{#}
 ; @ rows | len grid
 ; @ cols | len (idx 0 grid)
 @ tiles | tabGet state b#tiles
-| trk [%tiles tiles]
 @ rooms | tabGet state b#rooms
+| trk [%xxxState state]
+| trk [%xxxplayerId playerId]
 @ gridRows | map (row & (barCat | map (tileId & printATile playerId state tileId) row)) tiles
-| trk [%gridRows gridRows]
 @ rowLines | barCat | intersperse barNewline gridRows
 | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
@@ -1702,6 +1707,31 @@ b#{your inventory is empty}
 ; @ rowLines | barCat | intersperse barNewline gridRows
 ; | barUnlines | intersperse barNewline [rowLines "" message "" b#{> }]
 
+= initialMap | generateMap 43 8 5 4 9876
+= initialTiles | (idx 0 initialMap)
+= initialRooms | (idx 1 initialMap)
+= initialPlayers
+| tabFromPairs
+++  , 1
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Vinney}]
+      [b#currentPosition 16]
+      [b#hp 10]
+++  , 2
+    | tabFromPairs
+    , [b#connected 0]
+      [b#name b#{Chase}]
+      [b#currentPosition 8]
+      [b#hp 10]
+
+= initRandomState
+| tabFromPairs
+, [b#rooms initialRooms]
+  [b#tiles initialTiles]
+  [b#players initialPlayers]
+  [b#actingId 1]
+
 = (tick state input)
 @ [changed msg] | commandDo input state
 ; | trk [%changed changed]
@@ -1710,4 +1740,4 @@ b#{your inventory is empty}
 ; | (printrandom, tick newState)
 | (print playerId newState msg, tick newState)
 
-= main | tick gis
+= main | tick initRandomState
