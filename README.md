@@ -48,22 +48,22 @@ instruction, refer to
 
 1. Clone this repo. Navigate to the root of it.
 
-```console
-git clone git@github.com:deathtothecorporation/pallas.git
-cd pallas
+```shell
+$ git clone git@github.com:deathtothecorporation/pallas.git
+$ cd pallas
 ```
 
 2. Get into a Nix shell
 
-```console
-nix develop
+```shell
+$ nix develop
 ```
 
 3. Build pallas
 This will take some time. Perhaps upwards of 15 minutes, depending on your system.
 
-```console
-stack build
+```shell
+$ stack build
 ```
 
 
