@@ -17,21 +17,20 @@ the Solid State Interpreter.
 
 ## Introduction
 
-#TODO brief explanation of what Pallas is, what Sire is
-- automatic persistence
-- portability, zero dependencies
-- running program serialization
+The Pallas [SSI](https://wiki.vaporware.network/solid-state%20interpreter) programming environment is written in a purely functional, rune-based language called Sire. Sire is a sort of Lisp-Haskell with a visual resemblance to Hoon.
 
-Maybe:
+Pallas provides the following features out of the box, without any special configuration or external libraries:
+
+- Automatic orthogonal persistence
+- Extreme portability with zero external dependencies
+- Serialization of _running_ programs
+- Content-based addressing of data, code, and running processes
+- Functional programming and homoiconicity
+
+#TODO include these?
 - macros
 - continuations
 - content-based addressing
-
-#TODO previous content:
-
-> [Vaporware](https://vaporware.network) is a distributed operating system designed for use by individual people, not corporations. It is our belief that a personal internet, composed of computers entirely owned by normal people, is both possible and desirable. Our project owes its existence to the Urbit community—both for inspiration and support—but shares none of Urbit’s codebase and diverges from many of the principles and technical choices of the Urbit project.
-
-> Vaporware runs on the Plunder virtual machine. [Plunder is a solid-state interpreter](https://git.sr.ht/\~plan/plunder): a programming environment which combines orthogonal persistence, functional programming, and homoiconicity. Imagine a Scheme Lisp machine with automatically persisted application state, and you’re not far off the mark. Plunder and Vaporware are not the same project, but share some of the same long term goals; Vaporware is the first third-party developer to adopt the Plunder software stack.
 
 ## Caveats
 
