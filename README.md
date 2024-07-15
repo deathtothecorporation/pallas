@@ -49,21 +49,21 @@ instruction, refer to
 1. Clone this repo. Navigate to the root of it.
 
 ```shell
-$ git clone git@github.com:deathtothecorporation/pallas.git
-$ cd pallas
+git clone git@github.com:deathtothecorporation/pallas.git
+cd pallas
 ```
 
 2. Get into a Nix shell
 
 ```shell
-$ nix develop
+nix develop
 ```
 
 3. Build pallas
 This will take some time. Perhaps upwards of 15 minutes, depending on your system.
 
 ```shell
-$ stack build
+stack build
 ```
 
 
