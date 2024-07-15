@@ -47,9 +47,29 @@ instruction, refer to
 [the documentation](https://vaporware.gitbook.io/vaporware/installation/installation).
 
 1. Clone this repo. Navigate to the root of it.
-2. Get into a Nix shell: `nix develop`
-3. Build Pallas: `stack build`. This will take some time, perhaps up to 15 minutes.
-4. Confirm everything is working: _#TODO: We will provide a simple demo to run_
+
+```console
+git clone git@github.com:deathtothecorporation/pallas.git
+cd pallas
+```
+
+2. Get into a Nix shell
+
+```console
+nix develop
+```
+
+3. Build pallas
+This will take some time. Perhaps upwards of 15 minutes, depending on your system.
+
+```console
+stack build
+```
+
+
+4. Confirm everything is working
+
+_#TODO: We will provide a simple demo to run_
 
 ## Getting Started
 
