@@ -17,7 +17,7 @@ the Solid State Interpreter.
 
 ## Introduction
 
-The Pallas [SSI](https://wiki.vaporware.network/solid-state%20interpreter) programming environment is written in a purely functional, rune-based language called Sire. Sire is a sort of Lisp-Haskell with a visual resemblance to Hoon.
+The Pallas [SSI](https://wiki.vaporware.network/solid-state%20interpreter) programming environment is written in a purely functional, rune-based language called Sire. Sire is a sort of Lispy-Haskell with a visual resemblance to Hoon.
 
 Pallas provides the following features out of the box, without any special configuration or external libraries:
 
