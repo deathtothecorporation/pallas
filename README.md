@@ -1,6 +1,9 @@
 # Pallas
 
-#todo Brief subtext
+#TODO Brief subtext
+
+Pallas is an open source exokernel system built on a new computational model:
+the Solid State Interpreter.  
 
 ## Index
 
@@ -14,7 +17,7 @@
 
 ## Introduction
 
-#todo brief explanation of what Pallas is, what Sire is
+#TODO brief explanation of what Pallas is, what Sire is
 - automatic persistence
 - portability, zero dependencies
 - running program serialization
@@ -24,7 +27,7 @@ Maybe:
 - continuations
 - content-based addressing
 
-#todo previous content:
+#TODO previous content:
 
 > [Vaporware](https://vaporware.network) is a distributed operating system designed for use by individual people, not corporations. It is our belief that a personal internet, composed of computers entirely owned by normal people, is both possible and desirable. Our project owes its existence to the Urbit community—both for inspiration and support—but shares none of Urbit’s codebase and diverges from many of the principles and technical choices of the Urbit project.
 
@@ -32,44 +35,120 @@ Maybe:
 
 ## Caveats
 
-#todo current experimental nature of the repo, what's ready, what's not, etc.
+#TODO current experimental nature of the repo, what's ready, what's not, etc.
 
 ## Installation
 
-#todo brief installation instructions here for linux, mac. Should be
-copy-pasteable and _just work_ for the majority of cases
+#TODO improve the docs install page. handle other OSes, known gotchas, etc.
 
-#todo link out to [docs install page](https://vaporware.gitbook.io/vaporware/installation/installation) for more.
+Using Nix is the most straightfoward way to install Pallas at this time. 
+If your system doesn't support either of these or if you need further
+instruction, refer to
+[the documentation](https://vaporware.gitbook.io/vaporware/installation/installation).
 
-#todo improve the docs install page
+1. Clone this repo. Navigate to the root of it.
+2. Get into a Nix shell: `nix develop`
+3. Build Pallas: `stack build`. This will take some time, perhaps up to 15 minutes.
+4. Confirm everything is working: _#TODO: We will provide a simple demo to run_
 
 ## Getting Started
 
-#todo command-line examples for:
+#TODO command-line examples for:
 - getting a REPL
+  - `stack run plunder sire sire/prelude.sire`
 - booting the TODO app, updating state, closing, re-launching to see state.
+  - #TODO
 
 ## Example
 
-#todo some Sire examples
+#TODO very briefly explain what Sire is.
 
-#todo link to examples directory
+Here is a brief look at Sire. The
+[documentation](https://vaporware.gitbook.io/vaporware/sire/intro) covers the
+language more fully, but we want you to get a sense of it now.
+
+#TODO some Sire examples
+
+#TODO reminder about getting into a repl
+
+### Top-level binding
+
+```sire
+; This is a comment.
+
+; Top-level binding of 3 to x:
+x=3
+```
+
+### Function application
+
+```sire
+(add 1 3)
+; ^ function name (add)
+;    ^ first argument (1)
+;      ^ second argument (3)
+
+4 ; return value
+```
+
+```sire
+| add 1 3
+4   ; return value
+```
+
+```sire
+add-1-3
+4
+```
+
+```sire
+; Binding a named function
+= (addTwo input)
+| add 2 input
+
+
+; Applying it
+(addTwo 4)
+6
+```
+
+### Rows
+
+```sire
+row=[10 64 42]
+
+; idx is a function that returns a particular index in a row
+
+(idx 0 row)
+10
+; the zeroth item in the row
+
+(idx 2 row)
+42
+```
+
+### Demo Examples
+
+#TODO create `/examples`, fill it.
+
+Take a look through the `/examples` directory to explore more complex Sire
+procedures.
 
 ## Contributing
 
-#todo the contributions we're interested in:
+#TODO the contributions we're interested in:
 - Bugs in existing demos
 - New demos
 - Documentation improvements
 - New Issue for “How does xyz thing work?” - with the satisfaction of the Issue being a PR to docs, examples, source code, etc.
 
-#todo link to a `contributing.md`
+#TODO link to a `contributing.md`
 
 ## Additional Resources
 
-#todo
+#TODO Write something here.
 
-- pallas is developed by: vaporware/opfn homepage
-- [the documentation website](https://vaporware.gitbook.io/vaporware)
+- Pallas is developed by [The Operating Function Company](https://vaporware.network)
+- [Technical Documentation](https://vaporware.gitbook.io/vaporware)
   - or view the docs source files at the `doc/` git submodule.
-- telegram group
+- [OPFN Telegram](https://t.me/vaporwareNetwork)
