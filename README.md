@@ -23,9 +23,9 @@ Pallas provides the following features out of the box, without any special confi
 
 - Automatic orthogonal persistence
 - Extreme portability with zero external dependencies
-- Serialization of _running_ programs
-- Content-based addressing of data, code, and running processes
-- Functional programming and homoiconicity
+- Merkleized state and content-addressable memory pages
+- Natively networked with public keys as endpoints
+- Serializable closures that can be transferred over the network
 
 #TODO include these?
 - macros
