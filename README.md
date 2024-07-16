@@ -60,7 +60,11 @@ _Note: libm and libc are standard system libraries and should already be present
 
 2. Get a prebuilt binary:
 
-Download the binary from here: [https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas](https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas). Make it executable and move it somewhere on your path.
+Download the binary from here: [https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas](https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas) (your browser may not prompt to download this binary, see below).
+
+`curl -L https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas -o pallas`
+
+Make it executable and move it somewhere on your path.
 
 3. Run it:
 
