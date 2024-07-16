@@ -110,6 +110,8 @@ $ pallas sire sire/prelude.sire
 
 ```
 
+(Ctrl-C to get out of the REPL)
+
 ### Get a Development Environment
 
 Using Nix is the most straightfoward way to install Pallas at this time. 
