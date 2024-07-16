@@ -1,9 +1,6 @@
 # Pallas
 
-#TODO Brief subtext
-
-Pallas is an open source exokernel system built on a new computational model:
-the Solid State Interpreter.  
+An open source Solid State Interpreter exokernel and runtime
 
 ## Index
 
@@ -33,11 +30,87 @@ Pallas provides the following features out of the box, without any special confi
 
 ## Installation
 
-#TODO improve the docs install page. handle other OSes, known gotchas, etc.
+_COMING SOON_: Installation instructions for MacOS.
+
+### Quick Start (Ubuntu/Debian-based)
+
+The quickest way to run Pallas is by installing a few dependencies and grabbing
+a pre-built binary.
+
+_We provide a very simple install script for Ubuntu/Debian at `bin/install.sh` that
+does the following for you. Or you can proceed manually:_
+
+1. Install dependencies:
+
+Dependencies:
+- libgmp (GNU Multiple Precision Arithmetic Library)
+- liblmdb (Lightning Memory-Mapped Database)
+- libz (zlib compression library)
+
+On Ubuntu or Debian-based systems, you can install these with:
+
+```console
+sudo apt-get update && sudo apt-get install -y \
+    libgmp10 \
+    liblmdb0 \
+    zlib1g
+```
+
+_Note: libm and libc are standard system libraries and should already be present on any Linux system._
+
+2. Get a prebuilt binary:
+
+Download the binary from here: [https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas](https://pallas-binaries.nyc3.cdn.digitaloceanspaces.com/test/pallas). Make it executable and move it somewhere on your path.
+
+3. Run it:
+
+If all went well, you should see this:
+
+```console
+$ pallas
+
+Run a Pallas machine
+
+Usage: pallas COMMAND
+
+  Pallas
+
+Available options:
+  -h,--help                Show this help text
+
+Available commands:
+  sire                     Run a standalone Sire repl.
+  save                     Load a sire file and save a seed.
+  show                     Print a seed file.
+  repl                     Interact with a seed file.
+  start                    Resume an idle machine.
+  boot                     Boot a machine.
+```
+
+4. Get a Sire REPL:
+
+Clone this repository and navigate to its root. Then run:
+
+```console
+$ pallas sire sire/prelude.sire
+...
+...
+("prelude","LOADED FROM CACHE!")
+
+}
+} ==== Sire REPL ====
+}
+} Since input is multi-line, there is currently no input-prompt.
+} Just type away!
+}
+
+```
+
+### Get a Development Environment
 
 Using Nix is the most straightfoward way to install Pallas at this time. 
-If your system doesn't support either of these or if you need further
-instruction, refer to
+If your system doesn't support Nix or if you need further
+instruction (including instructions for Docker), refer to
 [the documentation](https://vaporware.gitbook.io/vaporware/installation/installation).
 
 1. Clone this repo. Navigate to the root of it.
@@ -54,6 +127,7 @@ nix develop
 ```
 
 3. Build pallas
+
 This will take some time. Perhaps upwards of 15 minutes, depending on your system.
 
 ```shell
@@ -61,29 +135,36 @@ stack build
 ```
 
 
-4. Confirm everything is working
+4. Confirm everything is working by dropping into a Sire REPL:
 
-_#TODO: We will provide a simple demo to run_
+```console
+$ stack run pallas sire sire/prelude.sire
+...
+...
+("prelude","LOADED FROM CACHE!")
+
+}
+} ==== Sire REPL ====
+}
+} Since input is multi-line, there is currently no input-prompt.
+} Just type away!
+}
+
+```
 
 ## Getting Started
 
-#TODO command-line examples for:
-- getting a REPL
-  - `stack run plunder sire sire/prelude.sire`
-- booting the TODO app, updating state, closing, re-launching to see state.
-  - #TODO
+_COMING SOON_: Quick start instructions for a todo list app with automatic persistence.
 
 ## Example
 
-#TODO very briefly explain what Sire is.
+Sire is the programming language of Pallas.
 
 Here is a brief look at Sire. The
 [documentation](https://vaporware.gitbook.io/vaporware/sire/intro) covers the
 language more fully, but we want you to get a sense of it now.
 
-#TODO some Sire examples
-
-#TODO reminder about getting into a repl
+If you are following along, use the instructions above to get a Sire REPL.
 
 ### Top-level binding
 
@@ -143,24 +224,25 @@ row=[10 64 42]
 
 ### Demo Examples
 
-#TODO create `/examples`, fill it.
+_COMING SOON_: An `/examples` filled with more complex Sire procedures.
 
-Take a look through the `/examples` directory to explore more complex Sire
-procedures.
 
 ## Contributing
 
-#TODO the contributions we're interested in:
-- Bugs in existing demos
-- New demos
+At this stage in Pallas development, these are the types of contributions that
+are most appropriate:
+
+- Bugs in the existing examples
+- New examples
 - Documentation improvements
-- New Issue for “How does xyz thing work?” - with the satisfaction of the Issue being a PR to docs, examples, source code, etc.
+- New GitHub issues for parts of the system that are unclear
+
+That said, we encourage you to dive even deeper and submit PRs beyond these
+suggestions.
 
 #TODO link to a `contributing.md`
 
 ## Additional Resources
-
-#TODO Write something here.
 
 - Pallas is developed by [The Operating Function Company](https://vaporware.network)
 - [Technical Documentation](https://vaporware.gitbook.io/vaporware)
