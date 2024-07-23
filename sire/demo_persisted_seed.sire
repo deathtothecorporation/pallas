@@ -1,0 +1,87 @@
+; Copyright 2024 OPFN
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+
+#### demo_persisted_seed <- prelude
+
+:| sire
+:| prelude
+:| kern
+:| json
+:| hitch
+:| stew
+:| gen
+
+;;; Persit a seed ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+# record CogState
+| COG_STATE
+* countU     : Nat
+* countD     : Nat
+* servThread : ThreadId
+
+= (newCogState serveThread)
+| COG_STATE
+* 0       ; initial countU
+* 1000000 ; initial countD
+* serveThread
+
+= (modifyState vSt fun return)
+: (PIN old) < readRef vSt
+@ srv       | **getServThread old
+@ pNew      | PIN (fun old)
+: _         < writeRef vSt pNew
+; : _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
+| return ()
+
+
+= (seedLoop vSt return)
+: (PIN pinState) < readRef vSt
+@ countU | getCountU pinState
+@ countD | getCountD pinState
+: now < syscall TIME_WHEN
+| trk [{countUp is at}=countU]
+| trk [{anticounter is at}=countD]
+@ seedBS | _SaveSeed [countU countD]
+| trk [b#{seed} seedBS]
+: _ < syscall (**TIME_WAIT (add now 1))
+: _ < modifyState vSt & pinState
+                      | setCountU | inc countU
+                      | setCountD | dec countD
+                      | pinState
+| seedLoop vSt return
+
+= (handleReq vSt request return)
+@ [rid method path query headers pBody@(PIN body)] request
+# switch method
+* GET
+  # switch path
+  * b#{/seed}
+    : (PIN st) < readRef vSt
+    @ seedBS | _SaveSeed [0]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head seedBS))
+    | return ()
+  * _
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))
+    | return ()
+* _
+  | trk [%gotUnknown method]
+  : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
+  | return ()
+
+= (runHttpServer vSt return)
+: ??(rhs_heard req) < syscall HTTP_HEAR
+: _                 < handleReq vSt req
+| runHttpServer vSt return
+
+(emptyFileServer req)=NONE
+
+= (spin return)
+: servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
+: vSt         < newRef (PIN | newCogState servThread)
+: timerThread < fork (seedLoop vSt)
+: httpThread1 < fork (runHttpServer vSt)
+: httpThread2 < fork (runHttpServer vSt)
+| return ()
+
+main=(runCog spin)
