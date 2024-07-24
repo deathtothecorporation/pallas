@@ -14,26 +14,54 @@
 
 ;;; Persit a seed ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+> Pin Bar
+= favicon
+| PIN
+| barCat
+, x#{89504e470d0a1a0a0000000d4948445200000020000000200806000000737a7a}
+  x#{f4000000017352474200aece1ce9000002a0494441545847ed563f486a71183d}
+
+# typedef ContentType Bar
+
+> HMap Str (ContentType, Pin Bar)
+= startingFiles
+| hmSingleton
+* largeConfig
+* {/favicon.ico}
+* [b#{image/x-icon} favicon]
+
 # record CogState
 | COG_STATE
 * countU     : Nat
 * countD     : Nat
+* files      : (HMap Str (ContentType, Pin Bar))
 * servThread : ThreadId
 
-= (newCogState serveThread)
+= (newCogState servThread)
 | COG_STATE
 * 0       ; initial countU
 * 1000000 ; initial countD
-* serveThread
+* startingFiles
+* servThread
+
+= (fileServer (PIN st) [method path query headers (PIN body)])
+| trk [%fileServerRequest method path query headers body]
+# switch method
+* _ | NONE
+* GET
+  | **fmapMaybe | hmLookup (barNat path) (**getFiles st)
+  & [type (PIN content)]
+  @ head | [(b#{Content-Type}, type)]
+  [200 b#gotcha head content]
+
 
 = (modifyState vSt fun return)
 : (PIN old) < readRef vSt
 @ srv       | **getServThread old
 @ pNew      | PIN (fun old)
 : _         < writeRef vSt pNew
-; : _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
+: _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
 | return ()
-
 
 = (seedLoop vSt return)
 : (PIN pinState) < readRef vSt
@@ -42,8 +70,6 @@
 : now < syscall TIME_WHEN
 | trk [{countUp is at}=countU]
 | trk [{anticounter is at}=countD]
-@ seedBS | _SaveSeed [countU countD]
-| trk [b#{seed} seedBS]
 : _ < syscall (**TIME_WAIT (add now 1))
 : _ < modifyState vSt & pinState
                       | setCountU | inc countU
@@ -52,13 +78,21 @@
 | seedLoop vSt return
 
 = (handleReq vSt request return)
+| trk [%gotReq]
 @ [rid method path query headers pBody@(PIN body)] request
 # switch method
 * GET
   # switch path
   * b#{/seed}
     : (PIN st) < readRef vSt
+    | trk [%gotSeed]
+    | trk [%st st]
+    @ countU | getCountU-st
+    @ countD | getCountD-st
+    | trk [%countU countU]
+    | trk [%countD countD]
     @ seedBS | _SaveSeed [0]
+    | trk [%seedBS seedBS]
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head seedBS))
     | return ()
   * _
@@ -79,6 +113,7 @@
 = (spin return)
 : servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
 : vSt         < newRef (PIN | newCogState servThread)
+: _           < modifyState vSt id
 : timerThread < fork (seedLoop vSt)
 : httpThread1 < fork (runHttpServer vSt)
 : httpThread2 < fork (runHttpServer vSt)
