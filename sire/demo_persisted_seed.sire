@@ -68,8 +68,6 @@
 @ countU | getCountU pinState
 @ countD | getCountD pinState
 : now < syscall TIME_WHEN
-| trk [{countUp is at}=countU]
-| trk [{anticounter is at}=countD]
 : _ < syscall (**TIME_WAIT (add now 1))
 : _ < modifyState vSt & pinState
                       | setCountU | inc countU
@@ -77,9 +75,27 @@
                       | pinState
 | seedLoop vSt return
 
+= (getOffset needle haystack)
+@ start (idx 0 (barSubstringSearch needle haystack))
+@ width (barLen needle)
+(add start width)
+
+
 = (handleReq vSt request return)
-| trk [%gotReq]
+| trk [%gotReq request]
+| trk [%requestType (dataTag request)]
+| trk [%requestLength (len request)]
 @ [rid method path query headers pBody@(PIN body)] request
+| trk [%rid rid]
+| trk [%method method]
+| trk [%path path]
+| trk [%query query]
+| trk [%headers headers]
+| trk [%bodyType (dataTag body)]
+| trk [%bodyContent body]
+; @ [rid method path query headers pBody@(PIN body)] request
+| trk [%allParams [rid method path query pBody body]]
+| trk [%requestAsString (barCat (map barNat request))]
 # switch method
 * GET
   # switch path
@@ -91,13 +107,36 @@
     @ countD | getCountD-st
     | trk [%countU countU]
     | trk [%countD countD]
-    @ seedBS | _SaveSeed [0]
-    | trk [%seedBS seedBS]
-    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok head seedBS))
+    @ counterStruct | tabFromPairs [[%countUp countU] [%countD countD]]
+    @ seedStruct    | tabFromPairs [[%data counterStruct] [%function seedLoop]]
+    @ seedBS | _SaveSeed seedStruct
+    ; | trk [%seedBS seedBS]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [] seedBS))
     | return ()
   * _
-    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad head b#{}))
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
     | return ()
+* POST
+  # switch path
+  * b#{/seed}
+  | trk [%posted body]
+  @ delimiter | x#0d0a0d0a ; this is the \r\n\r\n between form-data headers and body
+  | trk [%delimiter delimiter]
+  @ offset | getOffset delimiter body
+  | trk [%offset offset]
+  @ seed | barDrop offset body
+  | trk [%seedBody seed]
+  | trk [%seedLength (barLen seed)]
+  @ s | _LoadSeed seed
+  | trk [%loadedSeed s]
+  @ restoredData | tabGet s b#data
+  | trk [%restoredData restoredData]
+  : _ < modifyState vSt & st
+                        | setCountU | tabGet restoredData b#countUp
+                        | setCountD | tabGet restoredData b#countD
+                        | st
+  : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [] b#{}))
+  | return ()
 * _
   | trk [%gotUnknown method]
   : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad [] b#{}))
@@ -105,6 +144,9 @@
 
 = (runHttpServer vSt return)
 : ??(rhs_heard req) < syscall HTTP_HEAR
+| trk [%rawRequest req]
+| trk [%rawRequestType (dataTag req)]
+| trk [%rawRequestLength (len req)]
 : _                 < handleReq vSt req
 | runHttpServer vSt return
 
