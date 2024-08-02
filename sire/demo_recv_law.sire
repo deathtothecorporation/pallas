@@ -11,7 +11,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-pubCogPort=50851 ;; EDIT ME!
+pubCogPort=55985 ;; EDIT ME!
 
 = (askerCog name onExit tid pubCogId return)
 @ req | NET_ASK pubCogId %agora name
@@ -30,7 +30,7 @@ pubCogPort=50851 ;; EDIT ME!
 : b < newEmptyMVar
 : c < newEmptyMVar
 : d < newEmptyMVar
-: _ < fork (askerCog (idx 0 lawHashes) (putMVar a) 1 pubCogId)
+: _ < fork (askerCog (idx 0 lawHashes) (putMVar a) 7 pubCogId)
 : _ < fork (askerCog (idx 1 lawHashes) (putMVar b) 2 pubCogId)
 : _ < fork (askerCog (idx 2 lawHashes) (putMVar c) 3 pubCogId)
 : _ < fork (askerCog (idx 3 lawHashes) (putMVar d) 4 pubCogId)
@@ -39,7 +39,13 @@ pubCogPort=50851 ;; EDIT ME!
 : cr@(cOk, _, cRes) < takeMVar c
 : dr@(dOk, _, dRes) < takeMVar d
 ;
-| trk [{RESULTS} aRes bRes cRes dRes]
+| trk [b#{Asking for law hashes ⤵ } lawHashes b#{from ⤵ } pubCogId]
+| trk b#{Evaluating laws...}
+| trk [b#{RESULTS ⤵ }]
+| trk [%law1 b#{Our threadId: 1} b#{A simple string. Result ⤵ } dRes]
+| trk [%law2 b#{Our threadId: 2} b#{Adding threadId + 10. Result ⤵ } bRes]
+| trk [%law3 b#{Our threadId: 3} b#{Multiplying threadId * 10. Result ⤵ } cRes]
+| trk [%law4 b#{Our threadId: 7} b#{Range creation (7 items). Result ⤵ } aRes]
 | return ()
 
 main=(runCog askDemo)

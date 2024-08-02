@@ -16,24 +16,28 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-= (pubCog laws return)
-: _ < syscall | NET_TELL %agora (tabGet laws)
-| pubCog laws return
+= (pubCog laws lawHashes return)
+: t < syscall | NET_TELL %agora (tabGet laws)
+| trk [b#{Providing laws ⤵ } laws]
+| pubCog laws lawHashes return
 
 = (law1 a)
-| traceId [law1=a]
+; | traceId [law1=a]
+; | trk [law1=a]
+b#{hello world}
 
 = (law2 a)
-| trk [law2=a]
+; | trk [law2=a]
 | add a 10
 
 = (law3 a)
-| trk [law3=a]
+; | trk [law3=a]
 | mul a 10
 
 = (law4 a)
-| trk [law4=a]
-| mul a | add a 7
+; | trk [law4=a]
+| map id (gen a id)
+; | mul a | add a 7
 
 = lawBook
 | tabFromPairs
@@ -41,11 +45,12 @@
 [planHash-law law]
 
 = lawHashes | tabKeysRow lawBook
+| trk [%lawHashes lawHashes]
 
 = main
 : exit < runCog
 : srv < fork (| syscall | HTTP_SERV | const NONE)
-| pubCog lawBook exit
+| pubCog lawBook lawHashes exit
 
 ^-^ main
 ^-^ lawHashes
