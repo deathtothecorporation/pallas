@@ -10,29 +10,24 @@
 
 ;;; Count Up ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Bind a top-level function named countLoop that takes a 'count' parameter
-; (and a 'k' parameter that we don't need to worry about now)
+; Bind a top-level named function
 = (countLoop count k)
 ;
-; Print out the current count value, using the bar | for function application.
-| trk [{counter is at} count]
-;
-; Perform a system call for the current time and pass the result as an
-; argument to an anonymous lambda.
+; Perform a system call for the current time
 | syscall TIME_WHEN
 & now
-; The following code is a continuation passed to the above syscall
+; The following code is a continuation passed to the above
 ;
-; Wait until "now plus 1", discarding the result of this syscall to "_"
+; Print out the current count value
+| trk [{counter is at} count]
+;
+; Wait until "now plus 1", discard return value
 : _ < syscall (TIME_WAIT (inc now))
-; The following code is a continuation passed to the above syscall
 ;
-; Finally, recurr, increasing the count by one.
+; Recurr, increasing the count by one
 | countLoop (inc count) k
-; End of countLoop function
 
 ; Bind a top-level "main" function that will run our program
 = (main)
-; Call "runCog" with our countLoop function. This will start a "process"
-; that will be responsible for threads, system calls, and other overhead.
+; Call runCog to start a process with the countLoop "job"
 | runCog (countLoop 0)
