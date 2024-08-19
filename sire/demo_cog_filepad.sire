@@ -192,12 +192,11 @@
 * ourPort    : Nat
 
 > ThreadId > CogState
-= (newCogState ourPort servThread)
+= (newCogState servThread)
 | COG_STATE
 * startingFiles
 * 0
 * servThread
-* ourPort
 
 (bindMaybe mVal k)=(maybeCase mVal NONE k)
 
@@ -264,12 +263,6 @@
 
 fileCogChannel=66
 
-= (reportPort port sender msg)
-; "sender" will be the notepad ID
-; "msg" is the next arg
-; TODO wtf:
-[port]
-
 = (handleReq vSt request return)
 @ [rid method path headers pBody@(PIN body)] request
 # switch method
@@ -325,16 +318,22 @@ fileCogChannel=66
 : _                 < handleReq vSt req
 | runHttpServer vSt return
 
+= (portResponder return)
+: _    < syscall | COG_TELL fileCogChannel (_ _ & [NONE ()])
+| trk %portResponder0
+: port < syscall HTTP_PORT
+| trk [%portResponder1 port]
+: _    < syscall | COG_TELL fileCogChannel (_ _ & (trk %tellFun [SOME-port ()]))
+| trk %portResponder2
+| portResponder return
+
 = (spinFiles return)
 : servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
-: port < syscall HTTP_PORT
-: vSt         < newRef (PIN | newCogState port servThread)
+: vSt         < newRef (PIN | newCogState servThread)
 : _           < modifyState vSt id
-; TODO: remove:
-; | trk ["files port" port]
-: ??(files_got [sender port]) < syscall (COG_TELL fileCogChannel reportPort-port)
 : httpThread1 < fork (runHttpServer vSt)
 : httpThread2 < fork (runHttpServer vSt)
+: portThread  < fork portResponder
 | return ()
 
 ; main=(runCog spinFiles)

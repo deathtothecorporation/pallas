@@ -413,7 +413,11 @@
 } </html>
 
 = (indexHtml filesPort ourPort)
-| barCat [htmlStart (interpolateOurPort ourPort) (interpolateFilesPort filesPort) htmlEnd]
+| barCat
+++ htmlStart
+++ interpolateOurPort ourPort
+++ interpolateFilesPort filesPort
+++ htmlEnd
 
 
 # typedef ContentType Bar
@@ -429,25 +433,24 @@
 * files      : (HMap Str (ContentType, Pin Bar))
 * fileBytes  : Nat
 * servThread : ThreadId
+* filesCog   : Nat
 * filesPort  : Nat
-* ourPort    : Nat
 
 > ThreadId > CogState
-= (newCogState filesPort ourPort servThread)
+= (newCogState servThread filesCog)
 | COG_STATE
 * b#{# Pallas Notepad\n\n- Any text entered here will be saved to Pallas.\n- Feel free to delete all of this intial content.\n\n**Enjoy!**}
 * startingFiles
 * 0
 * servThread
-* filesPort
-* ourPort
+* filesCog
+* 0                  ;; This will be populated on demand.
 
 = corsHeaders [(b#{Access-Control-Allow-Origin}, b#{*}) (b#{Access-Control-Allow-Methods}, b#{PUT, GET, POST, DELETE, OPTIONS}) (b#{Access-Control-Allow-Headers}, b#{*}) (b#{Access-Control-Allow-Credentials}, b#{true})]
 
 (emptyFileServer req)=NONE
 
 = (fileServer (PIN st) [method path headers (PIN body)])
-| trk [%fileServerRequest path]
 # switch method
 * _ | NONE
 * GET
@@ -458,7 +461,7 @@
 
 = (modifyState vSt fun return)
 : (PIN old) < readRef vSt
-@ srv       | **getServThread old
+@ srv       | getServThread old
 @ pNew      | PIN (fun old)
 : _         < writeRef vSt pNew
 : _         < cancelFork srv (syscall (**HTTP_SERV | fileServer pNew))
@@ -497,7 +500,7 @@
 
 (msgToStr m)=(JSTR | natBar m)
 
-= (buildJson st)
+= (buildJson ourPort st)
 @ COG_STATE(..) st
 | JMAP
 ## =note      | JVEC note
@@ -514,14 +517,13 @@
   * b#{/index.html}
     : (PIN st) < readRef vSt
     @ filesPort | getFilesPort st
-    @ ourPort  | getOurPort st
-    | trk [%filesPort filesPort]
-    | trk [%ourPort ourPort]
-    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [(b#{Content-Type}, b#{text/html})] (indexHtml filesPort ourPort)))
+    : ourPort < syscall HTTP_PORT
+    : _ < syscall (HTTP_ECHO rid 200 b#ok [(b#{Content-Type}, b#{text/html})] (indexHtml filesPort ourPort))
     | return ()
   * b#{/note}
     : (PIN st) < readRef vSt
-    @ noteJson   | buildJson st
+    : ourPort < syscall HTTP_PORT
+    @ noteJson   | buildJson st ourPort
     @ noteJsonBS | printJson noteJson
     | trk [%json noteJsonBS]
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok corsHeaders noteJsonBS))
@@ -536,9 +538,7 @@
     @ noteState | getNote st
     @ noteNat | fromSome noteState | parseNoteJson body
     @ note | natBar noteNat
-    : _ < modifyState vSt & st
-                          | setNote | note
-                          | st
+    : _ < modifyState vSt | setNote note
     : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok corsHeaders b#{}))
     | return ()
   * _
@@ -567,13 +567,25 @@
   : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad corsHeaders b#{}))
   | return ()
 
-
-= (runHttpServer vSt return)
-: ??(rhs_heard req) < syscall HTTP_HEAR
-: _                 < handleReq vSt req
-| runHttpServer vSt return
-
 fileCogChannel=66
+
+= (runHttpServer fileCog vSt return)
+| trk %runHttpServer0
+: ??(rhs_heard req) < syscall HTTP_HEAR
+| trk %runHttpServer1
+^ _ ()
+? (goto _)
+| trk %goto0
+: mPort < syscall (COG_ASK fileCog fileCogChannel ())
+@ mPort | unpackSome mPort
+| trk [%goto1 mPort]
+: port < maybeCase mPort (goto ())
+| trk [%goto2 port]
+: _     < modifyState vSt (setFilesPort port)
+| trk %goto3
+: _     < handleReq vSt req
+| trk %goto4
+| runHttpServer vSt return
 
 = (parseNat bar)
 @ wid (barLen bar)
@@ -592,25 +604,17 @@ fileCogChannel=66
 = (spinNotes return)
 | trk ["Notepad cog starting..."]
 : filesCogID  < syscall | COG_SPIN (runCog spinFiles)
-| trk ["Asking Files cog for port..."]
-: ??(asker_told maybePort)
-    < syscall (COG_ASK filesCogID fileCogChannel b#{what is your port?})
-# datacase maybePort
-* NONE
-  | trk [%crashedNone]
-  | return ()
-* SOME-port
-  | trk ["Got Files cog port!"]
-  ; TODO: remove:
-  ; | trk [%gotAskFromFiles port]
-  : servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
-  : notesPort        < syscall HTTP_PORT
-  : vSt         < newRef (PIN | newCogState port notesPort servThread)
-  : _           < modifyState vSt id
-  : httpThread1 < fork (runHttpServer vSt)
-  : httpThread2 < fork (runHttpServer vSt)
-  | trk ["Notepad cog UI ready " notesPort]
-  | trk [(barCat [b#{Visit http://localhost:} (natBar | showNat notesPort) b#{/index.html}])]
-  | return ()
+| trk %spinNotes0
+: servThread  < fork (syscall (**HTTP_SERV emptyFileServer))
+: vSt         < newRef (PIN | newCogState servThread filesCogID)
+| trk %spinNotes1
+: _           < modifyState vSt id
+: httpThread1 < fork (runHttpServer filesCogID vSt)
+| trk %spinNotes2
+: httpThread2 < fork (runHttpServer filesCogID vSt) ; TODO maybe having two will fuck with things
+| trk %spinNotes3
+; | trk ["Notepad cog UI ready " notesPort]
+; | trk [(barCat [b#{Visit http://localhost:} (natBar | showNat notesPort) b#{/index.html}])]
+| return ()
 
 main=(runCog spinNotes)
