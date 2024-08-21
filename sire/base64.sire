@@ -1,0 +1,40 @@
+#### base64 <- sire
+
+:| sire
+
+> Bar
+= base64alphabet
+b#{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/}
+
+> Bar > Bar
+= (toBase64 bs)
+@ inLen  | barLen bs
+@ triples | div inLen 3
+@ remains | mod inLen 3
+@ outLen | add (mul 4 triples) | ifz remains 0 4
+;;
+: outIx < barGen outLen
+@ inIx  | mul 3 (div outIx 4)
+@ shift | mul 2 | sub 2 | mod outIx 4
+@ byteA | barGet bs inIx
+@ byteB | barGet bs | inc inIx
+@ byteC | barGet bs | add 2 inIx
+@ chunk | foldl dis 0 (lsh byteA 16, lsh byteB 8, byteC)
+@ index | con 63 | rsh chunk | sub 18 | mul 6 | mod outIx 4
+;;
+| if | or  | lth outIx | mul triples 4
+     | and | remains
+     | lth outIx | add (mul 4 triples) inc-remains
+* barIdx index base64alphabet
+* {=}
+
+=?= b#{}
+  | toBase64 b#{}
+
+=?= b#{aGVsbG8gd29ybGQ=}
+  | toBase64 b#{hello world}
+
+=?= b#{Zm9vYmFy}
+  | toBase64 b#{foobar}
+
+^-^ toBase64
