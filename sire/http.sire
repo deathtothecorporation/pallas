@@ -5,6 +5,44 @@
 
 :| prelude
 
+; little endian! 800a hex == 32778, but barNat only registers this as little endian: 0a80
+= (u32FromBytesLSB a b c d)
+| add32 a
+| add32 (lsh32 b 8)
+| add32 (lsh32 c 16)
+        (lsh32 d 24)
+
+; breaks a nat that represents a word into
+; its little-endian component bytes
+(wordToBytes a)=(gen 4 i&(con 0xff (rsh a (mul 8 i))))
+
+; Little Endian Byte order
+> Row Word32 > Row Word8
+(wordsToBytes wv)=(catMap wordToBytes wv)
+
+; Take a big-endian hex bar and conver it to the correct Nat
+> Bar > Nat
+= (barToNatBE bar)
+@ bytes (barBytes bar)
+@ reversedBytes (rev bytes)
+| if (eql 2 | len bytes)
+    | u32FromBytesLSB
+        (get reversedBytes 0)
+        (get reversedBytes 1)
+        0
+        0
+| if (eql 4 | len bytes)
+    | u32FromBytesLSB
+        (get reversedBytes 0)
+        (get reversedBytes 1)
+        (get reversedBytes 2)
+        (get reversedBytes 3)
+| die {barToNatBE only supports 2 or 4 byte bars}
+
+; Test the function
+=?= 32778 (barToNatBE x#800a)
+=?= 52847 (barToNatBE x#ce6f)
+
 # typedef TCPPayload Bar
 
 # record TCPPacket
@@ -121,17 +159,25 @@ fullPacketHex
 ; Skip Ethernet (14 bytes) and IP headers (variable length)
 ; This is all wrong - probably because of byte-order?
 ; TODO;
-@ ipHeaderLength | mul 4 | mod (barIdx 14 tcpHex) 16
-@ tcpStart | add 14 ipHeaderLength
-@ srcPort  | barSliceToNat tcpStart 2 tcpHex
-@ dstPort  | barSliceToNat (add tcpStart 2) 2 tcpHex
-@ seqNum   | barSliceToNat (add tcpStart 4) 4 tcpHex
-@ ackNum   | barSliceToNat (add tcpStart 8) 4 tcpHex
+@ ethernetHeader | 14
+@ ipHeader | 20 ; TODO: this is variable length! need to calculate it
+@ tcpStart | add ipHeader ethernetHeader
+@ srcPort  | barToNatBE | barSlice tcpStart 2 tcpHex
+@ dstPort  | barToNatBE | barSlice (add tcpStart 2) 2 tcpHex
+@ seqNum   | barToNatBE | barSlice (add tcpStart 4) 4 tcpHex
+@ ackNum   | barToNatBE | barSlice (add tcpStart 8) 4 tcpHex
 @ dataOff  | rsh (barIdx (add tcpStart 12) tcpHex) 4
 @ flags    | mod (barIdx (add tcpStart 13) tcpHex) 64
-@ winSize  | barSliceToNat (add tcpStart 14) 2 tcpHex
-@ checksum | barSliceToNat (add tcpStart 16) 2 tcpHex
-@ urgPtr   | barSliceToNat (add tcpStart 18) 2 tcpHex
+@ flagByte (barIdx (add tcpStart 13) tcpHex)
+@ flagFin  (and flagByte 0x01)
+@ flagSyn  (and (rsh flagByte 1) 0x01)
+@ flagRst  (and (rsh flagByte 2) 0x01)
+@ flagPsh  (and (rsh flagByte 3) 0x01)
+@ flagAck  (and (rsh flagByte 4) 0x01)
+@ flagUrg  (and (rsh flagByte 5) 0x01)
+@ winSize  | barToNatBE | barSlice (add tcpStart 14) 2 tcpHex
+@ checksum | barToNatBE | barSlice (add tcpStart 16) 2 tcpHex
+@ urgPtr   | barToNatBE | barSlice (add tcpStart 18) 2 tcpHex
 ; Extract payload
 @ headerLen | mul dataOff 4
 @ payloadStart | add tcpStart headerLen
@@ -143,7 +189,14 @@ fullPacketHex
 | trk [%seqNum   seqNum]
 | trk [%ackNum   ackNum]
 | trk [%dataOff  dataOff]
-| trk [%flags    flags]
+| trk [%flagNum  flags]
+| trk [%flagByte flagByte]
+| trk [%flagFin  flagFin]
+| trk [%flagSyn  flagSyn]
+| trk [%flagRst  flagRst]
+| trk [%flagPsh  flagPsh]
+| trk [%flagAck  flagAck]
+| trk [%flagUrg  flagUrg]
 | trk [%winSize  winSize]
 | trk [%checksum checksum]
 | trk [%urgPtr   urgPtr]
