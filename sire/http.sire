@@ -79,17 +79,41 @@
 * headers    : List (Bar, Bar) ; List of key-value pairs
 * body       : Bar             ; Response body
 
+; TODO: header parsing is all wrong.
+= (parseHeader headerLine)
+; 32 is <space>
+; 58 is : character
+; 59 is ; character
+@ [name value] | barSplitOne 58 headerLine
+| [name value]
+
+
 ; Given a TCP payload, extract an HTTP request
 > TCPPayload > HTTPRequest
 = (parseHTTPRequest payload)
-; Split payload into lines
-; Parse first line to get method, path, and HTTP version
-; For each subsequent line until empty line:
-;   Split on ':' to get header name and value
-;   Add to headers list
-; Remaining data (if any) is the body
-; Return HTTP_REQ with parsed values
-0
+; 10 is CRLF:
+; > loadHexLit {0d0a}
+; > 10
+@ crlf | 10
+;
+; Split payload...
+; request line
+@ [requestLine payloadRemainder] | barSplitOne crlf payload
+; headers
+; TODO: this is all wrong. need to split on CRLFs,
+; body starts at DOUBLE CRLF
+;  - need to add seeker for double CRLF
+@ [headersPart body] | barSplitOne crlf payloadRemainder
+;
+; parse request line
+@ [method pathAndVersion] | barSplitOne { } requestLine
+| trk [%pathAndVersion pathAndVersion]
+@ [path version] | barSplitOne { } pathAndVersion
+;
+; parse headers
+@ headerLines | barSplit headersPart
+@ headers | map parseHeader headerLines
+[method path version headers body]
 
 > HTTPResponse > Bar
 = (serializeHTTPResponse http_res)
@@ -123,23 +147,23 @@
 
 ;;;;;;;
 
-; TODO: for testing
-= (extractTCPPacket fullPacketHex)
-; Calculate offset to TCP header
-@ ethernetHeaderLength | (mul 14 2) ; it's weird that it's 14 bytes but we're multiplying
-| trk [%ethHeadlen ethernetHeaderLength]
-| trk [%ethSlice (barSlice 14 99 fullPacketHex)]
-; The IP header length is variable and is specified in the first byte of the IP header
-; (the lower 4 bits, multiplied by 4 to get the length in bytes).
-@ ipHeadStart    | barSliceToNat 14 1 fullPacketHex
-| trk [%ipHeadStart ipHeadStart]
-| trk [%ipHeadStartn showNat ipHeadStart]
-@ ipHeaderLength | (mul (barSlice 14 1 fullPacketHex) 4)
-| trk [%ipHeadLen ipHeaderLength]
-@ tcpOffset | (add ethernetHeaderLength ipHeaderLength)
-| trk [%tcpOffset tcpOffset]
-; slice fullPacket tcpOffset (length fullPacket)
-fullPacketHex
+;; TODO: for testing
+;= (extractTCPPacket fullPacketHex)
+;; Calculate offset to TCP header
+;@ ethernetHeaderLength | (mul 14 2) ; it's weird that it's 14 bytes but we're multiplying
+;| trk [%ethHeadlen ethernetHeaderLength]
+;| trk [%ethSlice (barSlice 14 99 fullPacketHex)]
+;; The IP header length is variable and is specified in the first byte of the IP header
+;; (the lower 4 bits, multiplied by 4 to get the length in bytes).
+;@ ipHeadStart    | barSliceToNat 14 1 fullPacketHex
+;| trk [%ipHeadStart ipHeadStart]
+;| trk [%ipHeadStartn showNat ipHeadStart]
+;@ ipHeaderLength | (mul (barSlice 14 1 fullPacketHex) 4)
+;| trk [%ipHeadLen ipHeaderLength]
+;@ tcpOffset | (add ethernetHeaderLength ipHeaderLength)
+;| trk [%tcpOffset tcpOffset]
+;; slice fullPacket tcpOffset (length fullPacket)
+;fullPacketHex
 
 ; TODO: for testing. this will be a runtime task eventually.
 ; Take TCP information and extract relevant bits
@@ -164,8 +188,8 @@ fullPacketHex
 @ tcpStart | add ipHeader ethernetHeader
 @ srcPort  | barToNatBE | barSlice tcpStart 2 tcpHex
 @ dstPort  | barToNatBE | barSlice (add tcpStart 2) 2 tcpHex
-@ seqNum   | barToNatBE | barSlice (add tcpStart 4) 4 tcpHex
-@ ackNum   | barToNatBE | barSlice (add tcpStart 8) 4 tcpHex
+@ seqNumb  | barToNatBE | barSlice (add tcpStart 4) 4 tcpHex
+@ ackNumb  | barToNatBE | barSlice (add tcpStart 8) 4 tcpHex
 @ dataOff  | rsh (barIdx (add tcpStart 12) tcpHex) 4
 @ flags    | mod (barIdx (add tcpStart 13) tcpHex) 64
 @ flagByte (barIdx (add tcpStart 13) tcpHex)
@@ -177,32 +201,47 @@ fullPacketHex
 @ flagUrg  (and (rsh flagByte 5) 0x01)
 @ winSize  | barToNatBE | barSlice (add tcpStart 14) 2 tcpHex
 @ checksum | barToNatBE | barSlice (add tcpStart 16) 2 tcpHex
-@ urgPtr   | barToNatBE | barSlice (add tcpStart 18) 2 tcpHex
+@ urgPntr   | barToNatBE | barSlice (add tcpStart 18) 2 tcpHex
 ; Extract payload
+; use data offset to determine payload start (mul 4 to get byte-length)
 @ headerLen | mul dataOff 4
 @ payloadStart | add tcpStart headerLen
 @ payload | barSlice payloadStart (sub (barLen tcpHex) payloadStart) tcpHex
-| trk [%srcPort  srcPort]
-| trk [%tcpStart tcpStart]
-| trk [%srcPort  srcPort]
-| trk [%dstPort  dstPort]
-| trk [%seqNum   seqNum]
-| trk [%ackNum   ackNum]
-| trk [%dataOff  dataOff]
-| trk [%flagNum  flags]
-| trk [%flagByte flagByte]
-| trk [%flagFin  flagFin]
-| trk [%flagSyn  flagSyn]
-| trk [%flagRst  flagRst]
-| trk [%flagPsh  flagPsh]
-| trk [%flagAck  flagAck]
-| trk [%flagUrg  flagUrg]
-| trk [%winSize  winSize]
-| trk [%checksum checksum]
-| trk [%urgPtr   urgPtr]
-| trk [%payload  payload]
-1
+; | trk [%srcPort  srcPort]
+; | trk [%tcpStart tcpStart]
+; | trk [%srcPort  srcPort]
+; | trk [%dstPort  dstPort]
+; | trk [%seqNumb  seqNumb]
+; | trk [%ackNumb  ackNumb]
+; | trk [%dataOff  dataOff]
+; | trk [%flagNum  flags]
+; | trk [%flagByte flagByte]
+; | trk [%flagFin  flagFin]
+; | trk [%flagSyn  flagSyn]
+; | trk [%flagRst  flagRst]
+; | trk [%flagPsh  flagPsh]
+; | trk [%flagAck  flagAck]
+; | trk [%flagUrg  flagUrg]
+; | trk [%winSize  winSize]
+; | trk [%checksum checksum]
+; | trk [%urgPntr   urgPntr]
+; | trk [%payload  payload]
+[srcPort dstPort seqNumb ackNumb dataOff flagFin flagSyn flagRst flagPsh flagAck flagUrg winSize checksum urgPntr payload]
 
-= testPacket | x#0000000000000000000000000800450002886f6440004006bb097f0000017f000001800ace6f124ebb61a8099d2780180200007d00000101080a75b32e7e75b32db1474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a
+; from WireShark:
+; = testPacket | x#0000000000000000000000000800450002886f6440004006bb097f0000017f000001800ace6f124ebb61a8099d2780180200007d00000101080a75b32e7e75b32db1474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a
 
-| parseTCPPacket testPacket
+; includes "hello world" body I shoved in.
+= testPacket | x#0000000000000000000000000800450002886f6440004006bb097f0000017f000001800ace6f124ebb61a8099d2780180200007d00000101080a75b32e7e75b32db1474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a68656c6c6f20776f726c64
+
+= [srcPort dstPort seqNumb ackNumb dataOff flagFin flagSyn flagRst flagPsh flagAck flagUg winSize checksum urgPntr payload]
+ | parseTCPPacket testPacket
+
+= [method path version headers body] | parseHTTPRequest payload
+
+| trk [%srcPort srcPort]
+| trk [%path path]
+
+
+
+
