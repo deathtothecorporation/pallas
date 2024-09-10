@@ -119,9 +119,14 @@ onGive st syscall handle payload = do
     case mconn of
         Nothing -> fillInvalidSyscall syscall $> (CANCEL pass, [])
         Just conn -> do
-            writeTQueue conn.buffer payload
+            traverse (writeTQueue conn.buffer) $ go payload
             flow <- writeResponse syscall ()
             pure (CANCEL pass, [flow])
+  where
+    go bs
+      | BS.null bs = []
+      | otherwise  = let (chunk, rest) = BS.splitAt 6 bs
+                     in chunk : go rest
 
 categoryCall :: Vector Fan -> Text
 categoryCall args = "%tcp " <> case decodeRequest args of

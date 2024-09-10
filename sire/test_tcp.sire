@@ -5,8 +5,10 @@
 = main
 : exit < runCog
 : out  < syscall | TCP_OPEN 0 0
-: _    < syscall | TCP_GIVE out b#foobar
+: _    < syscall | TCP_GIVE out b#foobarbaz
 : in   < syscall | TCP_HEAR
+: data < syscall | TCP_TAKE in
+| trk [took=data]
 : data < syscall | TCP_TAKE in
 | trk [took=data]
 | exit ()
