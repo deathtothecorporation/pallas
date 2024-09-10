@@ -1,0 +1,467 @@
+#### cog_http <- prelude
+
+;; TODO:
+;; - HTTP messages that span multiple TCP packets
+
+:| prelude
+
+;;;; some byte styff
+
+; little endian! 800a hex == 32778, but barNat only registers this as little endian: 0a80
+= (u32FromBytesLSB a b c d)
+| add32 a
+| add32 (lsh32 b 8)
+| add32 (lsh32 c 16)
+        (lsh32 d 24)
+
+; breaks a nat that represents a word into
+; its little-endian component bytes
+(wordToBytes a)=(gen 4 i&(con 0xff (rsh a (mul 8 i))))
+
+; Little Endian Byte order
+> Row Word32 > Row Word8
+(wordsToBytes wv)=(catMap wordToBytes wv)
+
+; Take a big-endian hex bar and conver it to the correct Nat
+> Bar > Nat
+= (barToNatBE bar)
+@ bytes (barBytes bar)
+@ reversedBytes (rev bytes)
+| if (eql 2 | len bytes)
+    | u32FromBytesLSB
+        (get reversedBytes 0)
+        (get reversedBytes 1)
+        0
+        0
+| if (eql 4 | len bytes)
+    | u32FromBytesLSB
+        (get reversedBytes 0)
+        (get reversedBytes 1)
+        (get reversedBytes 2)
+        (get reversedBytes 3)
+| die {barToNatBE only supports 2 or 4 byte bars}
+
+=?= 32778 (barToNatBE x#800a)
+=?= 52847 (barToNatBE x#ce6f)
+
+;;;; header parsing helpers
+
+= (barSplitCRLF bar)
+| trk %barSplitCRLF
+| trk [%bar bar]
+| barSplitOne 10 bar
+
+= (barSplitColon bar)
+| trk %barSplitColon
+| trk [%bar bar]
+| barSplitOne 58 bar
+
+= (trimSpace bar)
+| trk %trimSpace
+| trk [%bar bar]
+| barDropWhile (eql 32) bar
+
+= (parseHeader headerBar)
+| trk %parseHeader
+| trk [%headerBar headerBar]
+@ [key value] | barSplitColon headerBar
+| trk [%key key]
+| trk [%val value]
+@ trimmedValue | trimSpace value
+[key trimmedValue]
+
+= (parseHeaders headersBar)
+| trk %parseHeaders
+| trk [%headersBar headersBar]
+@ headersList | barSplitCRLF headersBar
+| trk [%xxxxxheadersList headersList]
+| map parseHeader headersList
+
+= (findDoubleCRLF bar)
+| trk %startFindDouble
+@ [before after] | barSplitCRLF bar
+| trk [%beef before]
+| trk [%aftr after]
+| if (eql (barTake 2 after) x#0d0a)
+  [before (barDrop 2 after)]
+@ [nextBefore nextAfter] | findDoubleCRLF after
+| trk [%nextBefore nextBefore]
+| trk [%nextAfter nextAfter]
+[(barWeld before x#0d0a nextBefore) nextAfter]
+
+= (parseHttpPayload hexPayload)
+@ payload | hexPayload
+| trk [%pay payload]
+@ [headersBar bodyBar] | findDoubleCRLF payload
+| trk [%hed headersBar]
+| trk [%bod bodyBar]
+@ headers | parseHeaders headersBar
+| trk [%hedp headers]
+@ body | barDropWhile (eql 13) bodyBar
+[headers body]
+
+= (printParsedPayload parsedPayload)
+@ [headers body] parsedPayload
+| trk [%Headers headers]
+| trk [%Body body]
+
+;;;;
+
+# typedef TCPPayload Bar
+
+
+
+# record TCPPacket
+| TCP_PACKET
+* srcPort : Nat
+* dstPort : Nat
+* seqNumb : Nat
+* ackNumb : Nat
+* dataOff : Nat
+* flagFin : Bit
+* flagSyn : Bit
+* flagRst : Bit
+* flagPsh : Bit
+* flagAck : Bit
+* flagUrg : Bit
+* winSize : Nat
+* cheksum : Nat
+* urgPntr : Nat
+* payload : TCPPayload
+
+# record HTTPRequest
+| HTTP_REQ
+* method  : Bar             ; HTTP method
+* path    : Bar             ; Request URI
+* version : Bar             ; HTTP version
+* headers : List (Bar, Bar) ; List of key-value pairs
+* body    : Bar             ; Request body; may be empty
+
+# record HTTPResponse
+| HTTP_RES
+* version    : Bar             ; HTTP version
+* statusCode : Nat             ; Numeric status code
+* statusText : Bar             ; Status text (e.g "OK", "Not Found")
+* headers    : List (Bar, Bar) ; List of key-value pairs
+* body       : Bar             ; Response body
+
+; ; TODO: header parsing is all wrong.
+; = (parseHeader headerLine)
+; ; 32 is <space>
+; ; 58 is : character
+; ; 59 is ; character
+; @ [name value] | barSplitOne 58 headerLine
+; | [name value]
+
+; will get a stream of (senderIP, senderPort, payload)
+; and will need to inspect the payloads in order to assemble HTTP responses
+
+
+; Given a TCP payload, extract an HTTP request
+> TCPPayload > HTTPRequest
+= (parseHTTPRequest payload)
+; 10 is CRLF:
+; > loadHexLit {0d0a}
+; > 10
+@ crlf | 10
+;
+; Split payload...
+; request line
+@ [requestLine payloadRemainder] | barSplitOne crlf payload
+; headers
+; TODO: this is all wrong. need to split on CRLFs,
+; body starts at DOUBLE CRLF
+;  - need to add seeker for double CRLF
+@ [headersPart body] | barSplitOne crlf payloadRemainder
+;
+; parse request line
+@ [method pathAndVersion] | barSplitOne { } requestLine
+| trk [%pathAndVersion pathAndVersion]
+@ [path version] | barSplitOne { } pathAndVersion
+;
+; parse headers
+@ headerLines | barSplit headersPart
+@ headers | map parseHeader headerLines
+[method path version headers body]
+
+
+> HTTPResponse > Bar
+= (serializeHTTPResponse http_res)
+; Create status line: "{version} {status_code} {status_text}\r\n"
+; For each header:
+;   Append "{header_name}: {header_value}\r\n"
+; Append "\r\n"
+; Append body
+; Return concatenated Bar
+0
+
+> TCPPacket > HTTPResponse
+= (handleHTTPRequest tcp_packet)
+; Extract HTTP request from tcp_packet.payload using parseHTTPRequest
+; Process the HTTP request (e.g., route to appropriate handler)
+; Generate an HTTP response based on the request
+; Return the HTTP response
+0
+
+> HTTPResponse > (TCPPacket)
+= (sendHTTPResponse http_res)
+; Serialize http_res to a Bar using serializeHTTPResponse
+; Create a new TCP_PACKET with:
+;   - Appropriate source and destination ports
+;   - New sequence and acknowledgment numbers
+;   - Necessary flags (e.g., ACK, PSH)
+;   - Window size, checksum, and urgent pointer as needed
+;   - Serialized HTTP response as payload
+; Return the new TCP_PACKET
+0
+
+;;;;;;;
+
+;; TODO: for testing
+;= (extractTCPPacket fullPacketHex)
+;; Calculate offset to TCP header
+;@ ethernetHeaderLength | (mul 14 2) ; it's weird that it's 14 bytes but we're multiplying
+;| trk [%ethHeadlen ethernetHeaderLength]
+;| trk [%ethSlice (barSlice 14 99 fullPacketHex)]
+;; The IP header length is variable and is specified in the first byte of the IP header
+;; (the lower 4 bits, multiplied by 4 to get the length in bytes).
+;@ ipHeadStart    | barSliceToNat 14 1 fullPacketHex
+;| trk [%ipHeadStart ipHeadStart]
+;| trk [%ipHeadStartn showNat ipHeadStart]
+;@ ipHeaderLength | (mul (barSlice 14 1 fullPacketHex) 4)
+;| trk [%ipHeadLen ipHeaderLength]
+;@ tcpOffset | (add ethernetHeaderLength ipHeaderLength)
+;| trk [%tcpOffset tcpOffset]
+;; slice fullPacket tcpOffset (length fullPacket)
+;fullPacketHex
+
+; TODO: for testing. this will be a runtime task eventually.
+; Take TCP information and extract relevant bits
+> Bar > TCPPacket
+= (parseTCPPacket tcpHex)
+; Extract first 20 bytes as TCP header
+; Parse srcPort from bytes 0-1
+; Parse dstPort from bytes 2-3
+; Parse seqNumb from bytes 4-7
+; Parse ackNumb from bytes 8-11
+; Parse dataOff and flags from bytes 12-13
+; Parse winSize from bytes 14-15
+; Parse cheksum from bytes 16-17
+; Parse urgPntr from bytes 18-19
+; Extract remaining bytes as payload
+;
+; Skip Ethernet (14 bytes) and IP headers (variable length)
+; This is all wrong - probably because of byte-order?
+; TODO;
+@ ethernetHeader | 14
+@ ipHeader | 20 ; TODO: this is variable length! need to calculate it
+@ tcpStart | add ipHeader ethernetHeader
+@ srcPort  | barToNatBE | barSlice tcpStart 2 tcpHex
+@ dstPort  | barToNatBE | barSlice (add tcpStart 2) 2 tcpHex
+@ seqNumb  | barToNatBE | barSlice (add tcpStart 4) 4 tcpHex
+@ ackNumb  | barToNatBE | barSlice (add tcpStart 8) 4 tcpHex
+@ dataOff  | rsh (barIdx (add tcpStart 12) tcpHex) 4
+@ flags    | mod (barIdx (add tcpStart 13) tcpHex) 64
+@ flagByte (barIdx (add tcpStart 13) tcpHex)
+@ flagFin  (and flagByte 0x01)
+@ flagSyn  (and (rsh flagByte 1) 0x01)
+@ flagRst  (and (rsh flagByte 2) 0x01)
+@ flagPsh  (and (rsh flagByte 3) 0x01)
+@ flagAck  (and (rsh flagByte 4) 0x01)
+@ flagUrg  (and (rsh flagByte 5) 0x01)
+@ winSize  | barToNatBE | barSlice (add tcpStart 14) 2 tcpHex
+@ checksum | barToNatBE | barSlice (add tcpStart 16) 2 tcpHex
+@ urgPntr   | barToNatBE | barSlice (add tcpStart 18) 2 tcpHex
+; Extract payload
+; use data offset to determine payload start (mul 4 to get byte-length)
+@ headerLen | mul dataOff 4
+@ payloadStart | add tcpStart headerLen
+@ payload | barSlice payloadStart (sub (barLen tcpHex) payloadStart) tcpHex
+; | trk [%srcPort  srcPort]
+; | trk [%tcpStart tcpStart]
+; | trk [%srcPort  srcPort]
+; | trk [%dstPort  dstPort]
+; | trk [%seqNumb  seqNumb]
+; | trk [%ackNumb  ackNumb]
+; | trk [%dataOff  dataOff]
+; | trk [%flagNum  flags]
+; | trk [%flagByte flagByte]
+; | trk [%flagFin  flagFin]
+; | trk [%flagSyn  flagSyn]
+; | trk [%flagRst  flagRst]
+; | trk [%flagPsh  flagPsh]
+; | trk [%flagAck  flagAck]
+; | trk [%flagUrg  flagUrg]
+; | trk [%winSize  winSize]
+; | trk [%checksum checksum]
+; | trk [%urgPntr   urgPntr]
+; | trk [%payload  payload]
+[srcPort dstPort seqNumb ackNumb dataOff flagFin flagSyn flagRst flagPsh flagAck flagUrg winSize checksum urgPntr payload]
+
+; from WireShark:
+; = testPacket | x#0000000000000000000000000800450002886f6440004006bb097f0000017f000001800ace6f124ebb61a8099d2780180200007d00000101080a75b32e7e75b32db1474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a
+
+; includes "hello world" body I shoved in.
+= testPacket | x#0000000000000000000000000800450002886f6440004006bb097f0000017f000001800ace6f124ebb61a8099d2780180200007d00000101080a75b32e7e75b32db1474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a68656c6c6f20776f726c64
+
+; = [srcPort dstPort seqNumb ackNumb dataOff flagFin flagSyn flagRst flagPsh flagAck flagUg winSize checksum urgPntr payload]
+;  | parseTCPPacket testPacket
+; 
+; = [method path version headers body] | parseHTTPRequest payload
+; 
+; = parsedPayload | parseHttpPayload payload
+; 
+; | trk [%par parsedPayload]
+; 0
+
+# typedef SenderIP Bar
+
+# typedef BufferKey Bar
+
+; Includes a : between IP and port for legibility
+> Bar > Nat > BufferKey
+= (bufferKey senderIP senderPort)
+| barCat [senderIP b#{:} (natBar | showNat-senderPort)]
+
+# record HTTPBuffer
+| HTTP_BUF
+* senderIP       : SenderIP
+* senderPort     : Nat
+* assembledData  : Bar
+* headersParsed  : Bit
+* contentLength  : Maybe Nat
+* chunked        : Bit
+* receivedLength : Nat
+
+# record CogState
+| COG_STATE
+* buffers    : (HMap SenderIP HTTPBuffer)
+* servThread : ThreadId
+
+= (emptyBuffer senderIP senderPort)
+| HTTP_BUF
+* senderIP
+* senderPort
+* b#{}
+* FALSE
+* NONE
+* FALSE
+* 0
+
+# record CogState
+| COG_STATE
+* buffers    : (HMap BufferKey HTTPBuffer)
+* servThread : ThreadId
+
+> ThreadId > CogState
+= (newCogState servThread)
+| COG_STATE
+* emptyTab
+* 0
+
+
+= (modifyState vSt fun return)
+: (PIN old) < readRef vSt
+@ srv       | getServThread old
+@ pNew      | PIN (fun old)
+: _         < writeRef vSt pNew
+; : _         < cancelFork srv (syscall (HTTP_SERV | fileServer pNew))
+| return ()
+
+= (corsHeaders)
+[]
+
+= (handleReq vSt request return)
+@ [rid method path headers pBody@(PIN body)] request
+# switch method
+* GET
+  # switch path
+  * b#{/}
+    : (PIN st) < readRef vSt
+    ; @ ourPort  | getOurPort st
+    ; | trk [%ourPort ourPort]
+    : _ < fork (syscall (**HTTP_ECHO rid 200 b#ok [] b#{}))
+    | return ()
+  * _
+    : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad corsHeaders b#{}))
+    | return ()
+* POST
+  : (PIN st) < readRef vSt
+  ; @ barType | **fromSome b#{text/plain}
+  ;           | tabLookup b#{content-type}
+  ;           | tabFromPairs headers
+  ; @ newTotalSize | add (barLen body) | getFileBytes st
+  ; @ files (**getFiles st)
+  ; @ files | hmInsert (barNat path) [barType pBody] files
+  ; | trk [%newFiles files]
+  ; | trk [%newSize newTotalSize]
+  ; @ stateJson | buildJson st
+  ; @ stateJsonBS | printJson stateJson
+  : _ < fork (syscall (**HTTP_ECHO rid 201 b#done corsHeaders b#{}))
+  : _ < modifyState vSt & st
+                        | st
+  | return ()
+  : _ < fork (syscall (**HTTP_ECHO rid 400 b#bad corsHeaders b#{}))
+  | return ()
+
+
+= (runHttpServer vSt return)
+: ??(rhs_heard req) < syscall HTTP_HEAR
+: _                 < handleReq vSt req
+| runHttpServer vSt return
+
+= (spinHttp return)
+: ourPort     < syscall HTTP_PORT
+: vSt         < newRef (PIN | newCogState 99)
+: _           < modifyState vSt id
+: httpThread1 < fork (runHttpServer vSt)
+| trk [%port ourPort]
+| return ()
+
+> Bar > Word32
+= (ipToWord ipBar)
+@ octets (listToRow | barSplit 46 ipBar) ; 46 is ASCII for '.'
+| trk [%octs octets]
+| trk [%len (len octets)]
+| if (neq 4 | len octets)
+  | die {Invalid IP address format}
+^ foldl _ 0 octets
+& (acc octet)
+@ value (barLoadDecimal octet)
+| if (or (lth value 0) (gth value 255))
+  | die {Invalid octet value}
+| add (lsh acc 8) value
+
+> Word32 > Bar
+= (wordToIp ipWord)
+@ octet1 | barShowDecimal (div ipWord 16777216)
+@ octet2 | barShowDecimal (mod (div ipWord 65536) 256)
+@ octet3 | barShowDecimal (mod (div ipWord 256) 256)
+@ octet4 | barShowDecimal (mod ipWord 256)
+| barCat [octet1 b#{.} octet2 b#{.} octet3 b#{.} octet4]
+
+= testIp b#{192.168.1.2}
+= testWord (ipToWord testIp)
+= backToIp (wordToIp testWord)
+
+=?= testIp backToIp
+
+= testIp b#{192.0.0.0}
+= testWord (ipToWord testIp)
+= backToIp (wordToIp testWord)
+
+=?= testIp backToIp
+
+= testBar
+| b#} hello world
+
+
+; main=(runCog spinHttp)
+= main
+: exit < runCog
+: out  < syscall | TCP_OPEN (ipToWord b#{192.168.10.10}) 9999
+: _    < syscall | TCP_GIVE out testBar
+: in   < syscall | TCP_HEAR
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+| exit ()
