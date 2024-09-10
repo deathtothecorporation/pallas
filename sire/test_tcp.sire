@@ -1,0 +1,12 @@
+#### test_tcp <- prelude
+
+:| prelude
+
+= main
+: exit < runCog
+: out  < syscall | TCP_OPEN 0 0
+: _    < syscall | TCP_GIVE out b#foobar
+: in   < syscall | TCP_HEAR
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+| exit ()

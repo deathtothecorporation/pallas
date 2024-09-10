@@ -29,6 +29,7 @@ import Server.Hardware.Types (DeviceTable(..))
 import System.Random         (randomIO)
 -- ort Server.Hardware.Sock (createHardwareSock)
 import Server.Hardware.Time (createHardwareTime)
+import Server.Hardware.TCP (createHardwareTCP)
 -- ort Server.Hardware.Wock (createHardwareWock)
 import Server.Hardware.Poke (createHardwarePoke)
 
@@ -583,6 +584,7 @@ withMachineIn storeDir numWorkers enableSnaps machineAction = do
           --hw3_sock          <- createHardwareSock storeDir
             hw5_time          <- createHardwareTime
             hw6_port          <- createHardwarePort
+            hw7_tcp           <- createHardwareTCP
             (pure . DEVICE_TABLE . mapFromList) $
                 [ ( "rand", hw1_rand )
                 , ( "http", hw2_http )
@@ -591,6 +593,9 @@ withMachineIn storeDir numWorkers enableSnaps machineAction = do
                 , ( "time", hw5_time )
                 , ( "port", hw6_port )
                 , ( "poke", hw_poke  )
+                , ( "tcp" , hw7_tcp  )
+                --( "port", hw6_port )
+                --( "poke", hw_poke  )
                 ]
 
     let machineState = do
