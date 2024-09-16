@@ -65,6 +65,7 @@ runSysCall st syscall = case decodeRequest syscall.args of
     Just (OPEN ip port) -> onOpen st syscall ip port
     Just (TAKE handle)  -> onTake st syscall handle
     Just (GIVE handle payload) -> onGive st syscall handle payload
+    Just (SHUT handle) -> onShut st syscall handle
     Nothing       -> fillInvalidSyscall syscall $> (CANCEL pass, [])
 
 decodeRequest :: Vector Fan -> Maybe TCPRequest
@@ -74,6 +75,7 @@ decodeRequest = toList <&> \case
     [NAT "open", NAT ip, NAT port]        -> Just $ OPEN 0 0
     [NAT "take", NAT handle]              -> Just $ TAKE (fromIntegral handle)
     [NAT "give", NAT handle, BAR payload] -> Just $ GIVE (fromIntegral handle) payload
+    [NAT "shut", NAT handle]              -> Just $ SHUT (fromIntegral handle)
     _                                     -> Nothing
 
 data TCPRequest
@@ -82,9 +84,12 @@ data TCPRequest
     | OPEN HostAddress PortNumber
     | TAKE Int
     | GIVE Int ByteString
+    | SHUT Int
 
 onMine :: TCPState -> SysCall -> STM (Cancel, [Flow])
-onMine _ syscall = fillInvalidSyscall syscall $> (CANCEL pass, [])
+onMine _ syscall = do
+    flow <- writeResponse syscall $ NAT 8080
+    pure (CANCEL pass, [flow])
 
 onHear :: TCPState -> SysCall -> STM (Cancel, [Flow])
 onHear st syscall = do
@@ -97,14 +102,16 @@ onOpen st syscall ip port = do
     writeTVar st.nextConnId (connId + 1)
     buffer <- newTQueue
     modifyTVar st.connections $ IntMap.insert connId CONNECTION{..}
-    flow <- writeResponse syscall (NAT $ fromIntegral connId)
+    flow <- writeResponse syscall (Just $ NAT $ fromIntegral connId)
     pure (CANCEL pass, [flow])
 
 onTake :: TCPState -> SysCall -> Int -> STM (Cancel, [Flow])
 onTake st syscall handle = do
     mconn <- IntMap.lookup handle <$> readTVar st.connections
     case mconn of
-        Nothing -> fillInvalidSyscall syscall $> (CANCEL pass, [])
+        Nothing -> do
+            flow <- writeResponse syscall BS.empty
+            pure (CANCEL pass, [flow])
         Just conn -> tryReadTQueue conn.buffer >>= \case
             Nothing -> do
                 key <- poolRegister st.takePool syscall
@@ -120,13 +127,19 @@ onGive st syscall handle payload = do
         Nothing -> fillInvalidSyscall syscall $> (CANCEL pass, [])
         Just conn -> do
             traverse (writeTQueue conn.buffer) $ go payload
-            flow <- writeResponse syscall ()
+            flow <- writeResponse syscall (Just $ NAT $ fromIntegral $ BS.length payload)
             pure (CANCEL pass, [flow])
   where
     go bs
       | BS.null bs = []
       | otherwise  = let (chunk, rest) = BS.splitAt 6 bs
                      in chunk : go rest
+
+onShut :: TCPState -> SysCall -> Int -> STM (Cancel, [Flow])
+onShut st syscall handle = do
+    modifyTVar st.connections $ deleteMap handle
+    flow <- writeResponse syscall ()
+    pure (CANCEL pass, [flow])
 
 categoryCall :: Vector Fan -> Text
 categoryCall args = "%tcp " <> case decodeRequest args of
@@ -136,6 +149,7 @@ categoryCall args = "%tcp " <> case decodeRequest args of
     Just OPEN{} -> "%open"
     Just TAKE{} -> "%take"
     Just GIVE{} -> "%give"
+    Just SHUT{} -> "%shut"
 
 describeCall :: Vector Fan -> Text
 describeCall args = "%tcp " <> case decodeRequest args of
@@ -145,6 +159,7 @@ describeCall args = "%tcp " <> case decodeRequest args of
     Just OPEN{} -> "%open" -- TODO args
     Just TAKE{} -> "%take" -- TODO args
     Just GIVE{} -> "%give" -- TODO args
+    Just SHUT{} -> "%shut"
 
 acceptWorker :: TCPState -> IO Void
 acceptWorker st = forever do

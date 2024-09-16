@@ -408,6 +408,7 @@ cog
 = TCP_HEAR              | [%tcp 0 %hear]
 = (TCP_TAKE h)          | [%tcp 0 %take h]
 = TCP_MINE              | [%tcp 0 %mine]
+= (TCP_SHUT h)          | [%tcp 0 %shut h]
 
 = (HTTP_REQ m u h b r t) | [%http 0 %req m u h b r t]
 
@@ -527,4 +528,4 @@ abstype#(EvalResult a) ; TODO Use #datatype (it needs to do
 ^-^ PORT_SIRE PORT_SERV PORT_RQST PORT_DYNO PORT_HOLD
 ^-^ PORT_SEND PORT_RECV PORT_RCLL
 ^-^ PORT_SR_DROP PORT_SR_HOLD PORT_SR_RESP PORT_SR_DYNO
-^-^ TCP_OPEN TCP_GIVE TCP_HEAR TCP_TAKE TCP_MINE TCP_OPEN
+^-^ TCP_OPEN TCP_GIVE TCP_HEAR TCP_TAKE TCP_MINE TCP_SHUT
