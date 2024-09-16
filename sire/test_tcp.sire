@@ -4,11 +4,17 @@
 
 = main
 : exit < runCog
-: out  < syscall | TCP_OPEN 0 0
-: _    < syscall | TCP_GIVE out b#foobarbaz
+: mout < syscall | TCP_OPEN 0 0
+| trk [=mout]
+: out  < maybeCase mout | exit ()
+| trk [=out]
+: gave < syscall | TCP_GIVE out b#foobarbaz
+| trk [=gave]
 : in   < syscall | TCP_HEAR
+| trk [=in]
 : data < syscall | TCP_TAKE in
 | trk [took=data]
+: _    < syscall | TCP_SHUT in
 : data < syscall | TCP_TAKE in
 | trk [took=data]
 | exit ()
