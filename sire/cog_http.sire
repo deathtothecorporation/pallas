@@ -420,6 +420,11 @@
 
 = testBar
 | b#} hello world
+    } hello again
+    }
+    }
+    } those were newlines
+    } why have we stopped
 
 = testIP | b#{192.168.10.10}
 = ipWord | ipToWord testIP
@@ -432,6 +437,28 @@
 : out  < syscall | TCP_OPEN ipWord 9999
 : _    < syscall | TCP_GIVE out testBar
 : in   < syscall | TCP_HEAR
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
+: data < syscall | TCP_TAKE in
+| trk [took=data]
 : data < syscall | TCP_TAKE in
 | trk [took=data]
 | exit ()
