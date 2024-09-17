@@ -158,15 +158,118 @@
 = testIP | b#{192.168.10.10}
 = ipWord | ipToWord testIP
 
-; TODO: quite sure this doesn't work but haven't tested it yet
+> Bar > Bar > List Int
+= (barSubstringSearch needle haystack)
+@ needleWidth   (barLen needle)
+@ haystackWidth (barLen haystack)
+| if (not needleWidth)
+    | listTake haystackWidth (listEnumFrom 0)
+@ firstByte     (barIdx 0 needle)
+^ (_ 0)
+? (go off)
+@ found (barElemIndexOff firstByte off haystack)
+| if (gte found haystackWidth) NIL
+@ isMatch (barIsPrefixOf needle haystack found)
+@ more    (go | inc found)
+| if isMatch (CONS found more)
+| else more
+
+> Bar > Maybe Nat
 = (findDoubleCRLF bar)
-@ crlfBar | b#{\r\n\r\n}
-^ _ 0
-? (loop i)
-| if (gte (add i 4) | barLen bar) NONE
-| if (eql crlfBar | barSlice i 4 bar)
-  | SOME i
-| loop (inc i)
+@ doubleCRLF b#{\r\n\r\n}
+@ results (barSubstringSearch doubleCRLF bar)
+| trk [%res results]
+| listCase results
+    NONE
+& (firstMatch _)
+| SOME firstMatch
+
+> HTTPBuffer > HTTPBuffer
+= (checkHeadersComplete buffer)
+@ assembledData | getAssembledData buffer
+| maybeCase (findDoubleCRLF assembledData) buffer
+& endIndex
+@ buffer | (setHeadersParsed TRUE buffer)
+buffer
+
+; TODO: doesn't handle empty bars and trailng newlines, see tests
+= (barSplitNewlines bar)
+@ newline | b#{\n}
+^ _ bar 0 []
+? (loop remaining startIndex acc)
+@ searchResult | (barSubstringSearch newline remaining)
+| listCase searchResult
+; No more newlines found, add remaining part and return
+  | if (eql remaining b#{})
+    acc
+  | rowSnoc acc remaining
+& (index rest)
+; Found a newline
+@ endIndex | (add startIndex index)
+@ beforeNewline | (barSlice startIndex index bar)
+@ afterNewline | (barDrop (add index 2) remaining)
+@ newAcc | (rowSnoc acc beforeNewline)
+| loop afterNewline (add endIndex 2) newAcc
+
+=?= (v3 b#{asdfasd} b#{asdfasdf} b#{asdfasdf})
+    (barSplitNewlines b#{asdfasd\nasdfasdf\nasdfasdf\n})
+
+; =?= (v1 b#{})
+;     (barSplitNewlines b#{})
+
+=?= (v1 b#{no newlines})
+    (barSplitNewlines b#{no newlines})
+
+=?= (v2 b#{line1} b#{line2})
+    (barSplitNewlines b#{line1\nline2})
+
+;=?= (v3 b#{} b#{} b#{})
+;    (barSplitNewlines b#{\n\n})
+
+;=?= (v2 b#{trailing newline} b#{})
+;    (barSplitNewlines b#{trailing newline\n})
+
+;; \r\n\r\n
+; (bytesBar [13 10 13 10])
+;;
+
+= (extractHeaders assembledData)
+| maybeCase (findDoubleCRLF assembledData) emptyTab
+& endIndex
+@ newline | b#{\n}
+; find the first newline character index...
+@ idxHeadersPart | add (barLen newline) | idx 0 (barSubstringSearch newline assembledData)
+; then consider this the beginnging of the headers
+@ headersAndBeyond | (barSlice idxHeadersPart endIndex assembledData)
+| trk [%heb headersAndBeyond]
+@ headersAndBeyondL | (barSplitNewlines headersAndBeyond)
+@ justHeadersR | listToRow | listTakeWhile (neq b#{\r}) (listFromRow headersAndBeyondL)
+| trk [%headerLines justHeadersR]
+^ foldr _ emptyTab justHeadersR
+& (line acc)
+| trk [%line line]
+| trk [%bs (barSplitOne 58 line)]
+@ [key value] | barSplitOne 58 line
+| trk [%kv key value]
+@ trimmedKey | (barDropWhile (eql 32) key)
+@ trimmedValue | (barDropWhile (eql 32) | barDrop 1 value)
+@ idxTab | idx 0 (barSubstringSearch b#{\r} trimmedValue)
+@ trimmedValue | (idx 0 (barSplitAt idxTab trimmedValue))
+| tabIns trimmedKey trimmedValue acc
+
+= testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
+= testBuffer | HTTP_BUF testBar FALSE NONE FALSE 0
+
+| findDoubleCRLF testBar
+
+=?= (SOME 87) | (findDoubleCRLF testBar)
+
+= expectedHeaders | tabFromPairs [[b#Host b#{example.com}] [b#{Content-Type} b#{text/html}] [b#{Content-Length} b#15]]
+
+=?= expectedHeaders | (extractHeaders testBar)
+
+;; TODO: left off here.
+=?= TRUE | getHeadersParsed (checkHeadersComplete testBuffer)
 
 = (findContentLength headers)
 ^ foldr _ NONE headers
@@ -175,6 +278,17 @@
 | if (eql name b#{Content-Length})
   | SOME (barLoadDecimal value)
 result
+
+= (parseHeaders headerBar)
+@ headers (barSplit b#{\r\n} headerBar)
+^ foldr _ [] headers
+& (header acc)
+@ [name value] (barSplitOne 58 header) ; 58 is ':'
+| CONS [name value] acc
+
+= testHeaders | b#{Host: www.example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n}
+
+=?= [[b#Host b#{www.example.com}] [b#{Content-Type} b#{text/html}] [b#{Content-Length} b#15]] | (parseHeaders testHeaders)
 
 = (trimBar bar)
 ^ _ 0 (barLen bar)
