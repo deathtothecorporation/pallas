@@ -119,6 +119,7 @@
 * senderPort     : Nat
 * assembledData  : Bar
 * headersParsed  : Bit
+* headers        : (HMap Bar Bar)
 * contentLength  : Maybe Nat
 * chunked        : Bit
 * receivedLength : Nat
@@ -128,6 +129,7 @@
 * senderIP
 * senderPort
 * b#{}
+* emptyTab
 * FALSE
 * NONE
 * FALSE
@@ -186,10 +188,14 @@
 
 > HTTPBuffer > HTTPBuffer
 = (checkHeadersComplete buffer)
+| trk [%checkHeaders ]
 @ assembledData | getAssembledData buffer
+| trk [%xxxAssembled getAssembledData assembledData buffer]
 | maybeCase (findDoubleCRLF assembledData) buffer
 & endIndex
+| trk [%buffer buffer]
 @ buffer | (setHeadersParsed TRUE buffer)
+| trk [%bufferAfter buffer]
 buffer
 
 ; TODO: doesn't handle empty bars and trailng newlines, see tests
@@ -233,6 +239,7 @@ buffer
 ; (bytesBar [13 10 13 10])
 ;;
 
+> Bar > (HMap Bar Bar)
 = (extractHeaders assembledData)
 | maybeCase (findDoubleCRLF assembledData) emptyTab
 & endIndex
@@ -258,7 +265,7 @@ buffer
 | tabIns trimmedKey trimmedValue acc
 
 = testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
-= testBuffer | HTTP_BUF testBar FALSE NONE FALSE 0
+= testBuffer | HTTP_BUF 9 9 testBar emptyTab FALSE NONE FALSE 0
 
 | findDoubleCRLF testBar
 
@@ -268,7 +275,6 @@ buffer
 
 =?= expectedHeaders | (extractHeaders testBar)
 
-;; TODO: left off here.
 =?= TRUE | getHeadersParsed (checkHeadersComplete testBuffer)
 
 = (findContentLength headers)
@@ -279,16 +285,17 @@ buffer
   | SOME (barLoadDecimal value)
 result
 
-= (parseHeaders headerBar)
-@ headers (barSplit b#{\r\n} headerBar)
-^ foldr _ [] headers
-& (header acc)
-@ [name value] (barSplitOne 58 header) ; 58 is ':'
-| CONS [name value] acc
+; = (parseHeaders headerBar)
+; @ headers (barSplit b#{\r\n} headerBar)
+; ^ foldr _ [] headers
+; & (header acc)
+; @ [name value] (barSplitOne 58 header) ; 58 is ':'
+; | CONS [name value] acc
 
-= testHeaders | b#{Host: www.example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n}
+; = testHeaders | b#{Host: www.example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n}
 
-=?= [[b#Host b#{www.example.com}] [b#{Content-Type} b#{text/html}] [b#{Content-Length} b#15]] | (parseHeaders testHeaders)
+; TODO: maybe pull out parseHeaders to use within extractHeaders later?
+; =?= [[b#Host b#{www.example.com}] [b#{Content-Type} b#{text/html}] [b#{Content-Length} b#15]] | (parseHeaders testHeaders)
 
 = (trimBar bar)
 ^ _ 0 (barLen bar)
@@ -313,39 +320,88 @@ result
 | trk [%xxxx buffer]
 @ newAssembledData  | (barWeld (getAssembledData buffer) chunk)
 @ newReceivedLength | (add (getReceivedLength buffer) | barLen chunk)
-| trk [%newAssembled newAssembledData]
-| trk [%newRecLen newReceivedLength]
-| trk [%buffer buffer]
 @ buffer | setAssembledData newAssembledData buffer
 @ buffer | setReceivedLength newReceivedLength buffer
 | if (not | (getHeadersParsed buffer))
   | trk [%headersNotParsed]
+  | trk [%zzzzheaders (extractHeaders | barSlice 0 10000 newAssembledData)]
   @ headerEnd | (findDoubleCRLF newAssembledData)
-  | trk [%headerEnd headerEnd]
-  | maybeCase headerEnd
-      buffer
+  | trk [%zzzzheaderEnd headerEnd]
+  | die [%lol [headerEnd buffer]]
+  | maybeCase headerEnd buffer
   & i
-  @ headers | (parseHeaders | barSlice 0 i newAssembledData)
+  @ headers | (extractHeaders | barSlice 0 i newAssembledData)
+  | trk [%zzzzzzHeaders headers]
   @ contentLength | (findContentLength headers)
+  | trk [%zzzzzzCL contentLength]
   @ chunked | (isChunked headers)
   @ buffer | setHeadersParsed TRUE buffer
   @ buffer | setContentLength contentLength buffer
   @ buffer | setChunked chunked buffer
   buffer
-| trk [%headersParsed]
 buffer
 
 = (handleCompletedMessage buffer)
 | trk [%completedMessage buffer]
 | emptyBuffer 555 333
 
+; TODO: might need to make sure this is counting properly, given size of bytes?
+> Bar > Bar > Bit
+= (byteAtEnd sought full)
+; @ sought   | x#0d0a0d0a
+@ hits       | barSubstringSearch sought full
+| trk [%hits hits]
+| if (isZero hits)
+  | trk [%isZero]
+  FALSE
+@ lastHitIdx | listIdx (dec | listLen hits) hits
+| trk [%lastHitIdx lastHitIdx]
+; @ soughtLen  | mul 4 (barLen sought))
+@ soughtLen  | barLen sought
+| trk [%soughtLen soughtLen]
+@ total      | barLen full
+| trk [%total total]
+; have a sought byte index
+; and that index is properly at the end of the entire message
+| trk [%sub (sub total lastHitIdx)]
+| trk [%inc (inc (sub total lastHitIdx))]
+| trk [%soughtLen soughtLen]
+| trk [%gth (gth lastHitIdx 0)]
+| and (gth lastHitIdx 0) (eql soughtLen (sub total lastHitIdx))
+
+= findMe | x#0a0a
+= within | x#0d0d0d0a0a
+
+=?= TRUE | (byteAtEnd findMe within)
+
+= findMe | x#0a
+= within | x#0d0d0d0a
+
+=?= TRUE | (byteAtEnd findMe within)
+
+= findMe | x#0a
+= within | x#0d0a0d0d0a
+
+=?= TRUE | (byteAtEnd findMe within)
+
+= findMe | x#0a
+= within | x#0d0d0d0d
+
+=?= FALSE | (byteAtEnd findMe within)
+
+> HTTPBuffer > Bit
 = (isMessageComplete buffer)
 | trk [%checkIsComplete buffer]
+@ chunkedFlag | x#0d0a30d0a0d0a
+@ message     | getAssembledData buffer
+@ idx | barSubstringSearch x#0d0a0d0a message
+| trk [%idx idx]
+| trk [%isChunked (getChunked buffer)]
 | if (getChunked buffer)
-  | trk [%TODOsuffixThings]
-  TRUE ; TODO:
-  ; | barIsSuffixOf x#0d0a30d0a0d0a (tabGet buffer b#assembledData)
+  ;; x#0d0a30d0a0d0a - should be end bytes for chunked
+  | byteAtEnd chunkedFlag message
 | trk [%notSuffix]
+| trk [%contentLength (getContentLength buffer)]
 | maybeCase (getContentLength buffer) | FALSE
 & expectedLength
 | trk [%gteThings]
@@ -353,11 +409,8 @@ buffer
 | gte (getReceivedLength buffer) expectedLength
 
 = (processConnection in buffer return)
-| trk [%processConnection in buffer]
 : data < syscall | TCP_TAKE in
-| trk [%data data]
-| if (barIsEmpty data) ; check to see if we're done with HTTP message
-  | trk [%connectionClosed]
+| if (barIsEmpty data) ; check to see if we're done with HTTP message | trk [%connectionClosed]
   ;| emptyBuffer
   | return ()
 @ updatedBuffer | processHttpChunk buffer data
@@ -367,11 +420,29 @@ buffer
   @ newBuffer | handleCompletedMessage updatedBuffer
   | processConnection in newBuffer
 | trk [%processConnectionRecurring]
-| processConnection in updatedBuffer
+| processConnection in updatedBuffer return
 
-= (serverLoop in return)
+= (serverLoop return)
+; - processConnection needs to work continuously until it has a complete message
+; - then ... forward this whole thing away?
+;   - or make available to a consumer or something
+; create a connection handle:
+;
+; WHEN YOU HIT A SYSCALL YOU'RE ALWAYS DONE, THREAD-WISE
+; (but the cog isn't finished because you forked)
+; (add TCP_HEAR to rq row, at the *end* of the event), then continue with k
+;;;; the stack of syscalls is the "events" in the kernel loop stream
+;;;; and the sl and rq is the stack of continuations for those syscalls
+;;;; "exe" is the continuation and "response" is the result from the runtime (kern.sire KERNEL function)
+;;;; "end" is "return"
+;
+; todo: we'll need "infinite of these" / re-create when done:
+: [in ip port]   < syscall | TCP_HEAR
+; TODO: ip to word
+; ip and port from who connected to us.
+| trk [=in]
+: tid < fork (serverLoop)
 | processConnection in (emptyBuffer ipWord 8888) return
-; | serverLoop in return
 
 = main
 : exit < runCog
@@ -384,8 +455,6 @@ buffer
 | trk [=gave]
 ; now we're done setting up the test data
 ;
-; create a connection handle:
-: in   < syscall | TCP_HEAR ; todo: we'll need "infinite of these" / re-create when done.
-| trk [=in]
-; give that connection handle to the main loop:
-| serverLoop in exit
+| serverLoop exit
+
+
