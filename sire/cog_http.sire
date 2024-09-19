@@ -61,21 +61,21 @@
 | trk [%bar bar]
 | barDropWhile (eql 32) bar
 
-= (parseHeader headerBar)
-| trk %parseHeader
-| trk [%headerBar headerBar]
-@ [key value] | barSplitColon headerBar
-| trk [%key key]
-| trk [%val value]
-@ trimmedValue | trimSpace value
-[key trimmedValue]
+; = (parseHeader headerBar)
+; | trk %parseHeader
+; | trk [%headerBar headerBar]
+; @ [key value] | barSplitColon headerBar
+; | trk [%key key]
+; | trk [%val value]
+; @ trimmedValue | trimSpace value
+; [key trimmedValue]
 
-= (parseHeaders headersBar)
-| trk %parseHeaders
-| trk [%headersBar headersBar]
-@ headersList | barSplitCRLF headersBar
-| trk [%xxxxxheadersList headersList]
-| map parseHeader headersList
+; = (parseHeaders headersBar)
+; | trk %parseHeaders
+; | trk [%headersBar headersBar]
+; @ headersList | barSplitCRLF headersBar
+; | trk [%xxxxxheadersList headersList]
+; | map parseHeader headersList
 
 ;;;;
 
@@ -120,6 +120,8 @@
 * assembledData  : Bar
 * headersParsed  : Bit
 * headers        : (HMap Bar Bar)
+* reqLineParsed  : Bit
+* reqLine        : Bar
 * contentLength  : Maybe Nat
 * chunked        : Bit
 * receivedLength : Nat
@@ -129,8 +131,10 @@
 * senderIP
 * senderPort
 * b#{}
+* FALSE
 * emptyTab
 * FALSE
+* b#{}
 * NONE
 * FALSE
 * 0
@@ -265,7 +269,7 @@ buffer
 | tabIns trimmedKey trimmedValue acc
 
 = testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
-= testBuffer | HTTP_BUF 9 9 testBar emptyTab FALSE NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0
 
 | findDoubleCRLF testBar
 
@@ -314,6 +318,97 @@ result
   TRUE
 result
 
+> Bar > Bar > Maybe Nat
+= (getFirstIdxSubstring sought full)
+@ l | barSubstringSearch sought full
+| if (eql 0 l)
+  NONE
+| SOME (listIdx 0 l)
+
+=?= (0 2) | getFirstIdxSubstring b#x b#aaxaa
+
+=?= (0 2) | getFirstIdxSubstring b#x b#aaxax
+
+=?= (0 0) | getFirstIdxSubstring b#x b#xaaaa
+
+=?= (0 4) | getFirstIdxSubstring b#x b#aaaax
+
+=?= NONE | getFirstIdxSubstring b#x b#aaaaa
+
+=?= (0 2) | getFirstIdxSubstring x#0d x#47470d4747
+
+=?= (0 1) | getFirstIdxSubstring x#0d0a x#470d0a47
+
+> Bar > Bar > HTTPBuffer
+= (parseAndSetReqline stream buffer)
+| if (getReqLineParsed buffer)
+  ; already done, nothing to do.
+  buffer
+; do we have a first 0d0a?
+; if not, just return buffer
+| maybeCase (getFirstIdxSubstring x#0d0a stream) buffer
+; if so, we have a reqline
+& idx
+; slice from here to the 0d0a
+@ rl | barTake idx stream
+; put that in reqline
+@ buffer | setReqLine rl buffer
+; mark it parsed
+@ buffer | setReqLineParsed TRUE buffer
+buffer
+
+> Bar > Bit
+= (validReqLine reqLine)
+| if (eql reqLine 0)
+  FALSE
+@ split | listToRow | barSplit { } reqLine
+| if (neq 3 (len split))
+  ; we don't have three items
+  FALSE
+| if (any (x & (or (eql x 0) (eql 0 (barLen x)))) split)
+  ; we have three, but some of them are empty?
+  | die [split]
+  FALSE
+TRUE
+
+> HTTPBuffer > Maybe Bar
+= (mayExplainMethod buffer)
+@ reqLine | getReqLine buffer
+| if | not (validReqLine reqLine)
+  NONE
+@ [method uri protocol] | listToRow | barSplit { } reqLine
+| SOME method
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0
+
+=?= (0 b#{GET}) | mayExplainMethod testBuffer
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{POST /foo HTTP/1.1} NONE FALSE 0
+
+=?= (0 b#{POST}) | mayExplainMethod testBuffer
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0
+
+=?= NONE | mayExplainMethod testBuffer
+
+> HTTPBuffer > Maybe Bar
+= (mayExplainUri buffer)
+@ reqLine | getReqLine buffer
+| if | not (validReqLine reqLine)
+  NONE
+@ [method uri protocol] | listToRow | barSplit { } reqLine
+| SOME uri
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0
+
+=?= (0 b#{/foo}) | mayExplainUri testBuffer
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{asdfsadfsdf} NONE FALSE 0
+
+=?= NONE | mayExplainUri testBuffer
+
+
+
 ; TODO: fucking up the buffer tab
 = (processHttpChunk buffer chunk)
 | trk [%processHttpChunk [buffer chunk]]
@@ -322,27 +417,30 @@ result
 @ newReceivedLength | (add (getReceivedLength buffer) | barLen chunk)
 @ buffer | setAssembledData newAssembledData buffer
 @ buffer | setReceivedLength newReceivedLength buffer
-| if (not | (getHeadersParsed buffer))
-  | trk [%headersNotParsed]
-  | trk [%zzzzheaders (extractHeaders | barSlice 0 10000 newAssembledData)]
-  @ headerEnd | (findDoubleCRLF newAssembledData)
-  | trk [%zzzzheaderEnd headerEnd]
-  | die [%lol [headerEnd buffer]]
-  | maybeCase headerEnd buffer
-  & i
-  @ headers | (extractHeaders | barSlice 0 i newAssembledData)
-  | trk [%zzzzzzHeaders headers]
-  @ contentLength | (findContentLength headers)
-  | trk [%zzzzzzCL contentLength]
-  @ chunked | (isChunked headers)
-  @ buffer | setHeadersParsed TRUE buffer
-  @ buffer | setContentLength contentLength buffer
-  @ buffer | setChunked chunked buffer
-  buffer
+@ buffer | parseAndSetReqline newAssembledData buffer
 buffer
+; TODO: fuck all this shit:
+; | if (not | (getHeadersParsed buffer))
+;   | trk [%headersNotParsed]
+;   | trk [%zzzzheaders (extractHeaders | barSlice 0 10000 newAssembledData)]
+;   @ headerEnd | (findDoubleCRLF newAssembledData)
+;   | trk [%zzzzheaderEnd headerEnd]
+;   | maybeCase headerEnd buffer
+;   & i
+;   @ headers | (extractHeaders | barSlice 0 i newAssembledData)
+;   | trk [%zzzzzzHeaders headers]
+;   @ contentLength | (findContentLength headers)
+;   | trk [%zzzzzzCL contentLength]
+;   @ chunked | (isChunked headers)
+;   @ buffer | setHeadersParsed TRUE buffer
+;   @ buffer | setContentLength contentLength buffer
+;   @ buffer | setChunked chunked buffer
+;   buffer
+; buffer
 
 = (handleCompletedMessage buffer)
 | trk [%completedMessage buffer]
+| trk [%completedMessage (getAssembledData  buffer)]
 | emptyBuffer 555 333
 
 ; TODO: might need to make sure this is counting properly, given size of bytes?
@@ -391,27 +489,39 @@ buffer
 
 > HTTPBuffer > Bit
 = (isMessageComplete buffer)
-| trk [%checkIsComplete buffer]
-@ chunkedFlag | x#0d0a30d0a0d0a
-@ message     | getAssembledData buffer
-@ idx | barSubstringSearch x#0d0a0d0a message
-| trk [%idx idx]
-| trk [%isChunked (getChunked buffer)]
-| if (getChunked buffer)
-  ;; x#0d0a30d0a0d0a - should be end bytes for chunked
-  | byteAtEnd chunkedFlag message
-| trk [%notSuffix]
-| trk [%contentLength (getContentLength buffer)]
-| maybeCase (getContentLength buffer) | FALSE
-& expectedLength
-| trk [%gteThings]
-| trk [%expectedLength expectedLength]
-| gte (getReceivedLength buffer) expectedLength
+; TODO: short-circuiting to handle headers before dealing with the notes below.
+; For now, just looking for "double crlf" at end of message
+| not | isZero | idx 0 | barSubstringSearch x#0d0a0d0a (getAssembledData buffer)
+;
+;
+; Various ways a message can be inferred to be complete in HTTP 1.0...
+; - if no body is present, the end of the headers (blank line) signifies end
+; - if body is present...
+;   - `Connection: close` header
+;     - might have to wait around for this... when to stop waiting?
+;   - `Content-Length` header
+;| trk [%checkIsComplete buffer]
+;@ chunkedFlag | x#0d0a30d0a0d0a
+;@ message     | getAssembledData buffer
+;@ idx | barSubstringSearch x#0d0a0d0a message
+;| trk [%idx idx]
+;| trk [%isChunked (getChunked buffer)]
+;| if (getChunked buffer)
+;  ;; x#0d0a30d0a0d0a - should be end bytes for chunked
+;  | byteAtEnd chunkedFlag message
+;| trk [%notSuffix]
+;| trk [%contentLength (getContentLength buffer)]
+;| maybeCase (getContentLength buffer) | FALSE
+;& expectedLength
+;| trk [%gteThings]
+;| trk [%expectedLength expectedLength]
+;| gte (getReceivedLength buffer) expectedLength
 
 = (processConnection in buffer return)
 : data < syscall | TCP_TAKE in
 | if (barIsEmpty data) ; check to see if we're done with HTTP message | trk [%connectionClosed]
-  ;| emptyBuffer
+  ;| emptyBuffer (TODO: maybe?)
+  | todo [%gotEmptyData buffer]
   | return ()
 @ updatedBuffer | processHttpChunk buffer data
 | trk [%updatedBuffer updatedBuffer]
@@ -436,7 +546,8 @@ buffer
 ;;;; "exe" is the continuation and "response" is the result from the runtime (kern.sire KERNEL function)
 ;;;; "end" is "return"
 ;
-; todo: we'll need "infinite of these" / re-create when done:
+; todo: we'll need "infinite of these" / re-create when done / maybe forward on to
+;       next port number forever?
 : [in ip port]   < syscall | TCP_HEAR
 ; TODO: ip to word
 ; ip and port from who connected to us.
