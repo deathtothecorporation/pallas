@@ -182,7 +182,7 @@
 
 > Bar > Maybe Nat
 = (findDoubleCRLF bar)
-@ doubleCRLF b#{\r\n\r\n}
+@ doubleCRLF x#0d0a
 @ results (barSubstringSearch doubleCRLF bar)
 | trk [%res results]
 | listCase results
@@ -202,9 +202,43 @@
 | trk [%bufferAfter buffer]
 buffer
 
+= (xarLinesList bar)
+@ seek   | x#0d
+@ search | (barSubstringSearch seek bar)
+^ (_ 0)
+? (go sidx)
+| if (gth sidx inc-(len search)) NIL
+@ end  | listIdx sidx search
+@ next | listIdx (inc sidx) search
+| trk [%search search]
+| trk [%sidx sidx]
+| trk [%end end]
+| trk [%next next]
+| trk [%range (sub end sidx)]
+@ slic | (barSlice sidx (sub end sidx) bar)
+| trk [%watGet slic]
+| CONS slic
+| go (inc sidx)
+
+= (barLinesList bar)
+@ wid (barLen bar)
+^ (_ 0)
+? (go off)
+| if (gte off wid) NIL
+@ end (barElemIndexOff newlineChar off bar)
+| CONS (barSlice off (sub end off) bar)
+| go (inc end)
+
+99999999999999999
+
+(xarLines bar)=(listToRow | xarLinesList bar)
+
+=?= (listFromRow [x#de x#ad x#aabe x#ef])
+    | xarLinesList x#{de0dad0daabe0def0d}
+
 ; TODO: doesn't handle empty bars and trailng newlines, see tests
 = (barSplitNewlines bar)
-@ newline | b#{\n}
+@ newline | x#0d0a
 ^ _ bar 0 []
 ? (loop remaining startIndex acc)
 @ searchResult | (barSubstringSearch newline remaining)
@@ -222,7 +256,7 @@ buffer
 | loop afterNewline (add endIndex 2) newAcc
 
 =?= (v3 b#{asdfasd} b#{asdfasdf} b#{asdfasdf})
-    (barSplitNewlines b#{asdfasd\nasdfasdf\nasdfasdf\n})
+    (barSplitNewlines x#11110d22220d33330d)
 
 ; =?= (v1 b#{})
 ;     (barSplitNewlines b#{})
@@ -244,22 +278,13 @@ buffer
 ;;
 
 > Bar > (HMap Bar Bar)
-= (extractHeaders assembledData)
-| maybeCase (findDoubleCRLF assembledData) emptyTab
-& endIndex
-@ newline | b#{\n}
-; find the first newline character index...
-@ idxHeadersPart | add (barLen newline) | idx 0 (barSubstringSearch newline assembledData)
-; then consider this the beginnging of the headers
-@ headersAndBeyond | (barSlice idxHeadersPart endIndex assembledData)
-| trk [%heb headersAndBeyond]
-@ headersAndBeyondL | (barSplitNewlines headersAndBeyond)
-@ justHeadersR | listToRow | listTakeWhile (neq b#{\r}) (listFromRow headersAndBeyondL)
+= (extractHeaders headerBar)
+@ newline | x#0d0a
+@ headersAndBeyondL | (barSplitNewlines headerBar)
+@ justHeadersR | listToRow | listTakeWhile (neq x#0d0a) (listFromRow headersAndBeyondL)
 | trk [%headerLines justHeadersR]
 ^ foldr _ emptyTab justHeadersR
 & (line acc)
-| trk [%line line]
-| trk [%bs (barSplitOne 58 line)]
 @ [key value] | barSplitOne 58 line
 | trk [%kv key value]
 @ trimmedKey | (barDropWhile (eql 32) key)
@@ -275,9 +300,10 @@ buffer
 
 =?= (SOME 87) | (findDoubleCRLF testBar)
 
+= testHeaderBar | x#486f73743a206578616d706c652e636f6d0d0a436f6e74656e742d547970653a20746578742f68746d6c0d0a436f6e74656e742d4c656e6774683a2031350d0a
 = expectedHeaders | tabFromPairs [[b#Host b#{example.com}] [b#{Content-Type} b#{text/html}] [b#{Content-Length} b#15]]
 
-=?= expectedHeaders | (extractHeaders testBar)
+=?= expectedHeaders | (extractHeaders testHeaderBar)
 
 =?= TRUE | getHeadersParsed (checkHeadersComplete testBuffer)
 
@@ -386,6 +412,8 @@ buffer
 ; if so, we have all the headers
 & headersEndIdx
 @ h | barTake headersEndIdx remainTrimmed
+| trk [%zzzzzz remainTrimmed]
+| die (extractHeaders remainTrimmed)
 @ buffer | setHeaders h buffer
 ; TODO: use the good bits from extractHeaders here?
 ; mark it parsed
