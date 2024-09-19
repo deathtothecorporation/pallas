@@ -325,6 +325,15 @@ result
   NONE
 | SOME (listIdx 0 l)
 
+; YES, I realize this is an insane function.
+; TODO: don't be insane.
+> Bar > Bar > Maybe Nat
+= (getSecondIdxSubstring sought full)
+@ l | barSubstringSearch sought full
+| if (eql 0 l)
+  NONE
+| SOME (listIdx 1 l)
+
 =?= (0 2) | getFirstIdxSubstring b#x b#aaxaa
 
 =?= (0 2) | getFirstIdxSubstring b#x b#aaxax
@@ -355,6 +364,32 @@ result
 @ buffer | setReqLine rl buffer
 ; mark it parsed
 @ buffer | setReqLineParsed TRUE buffer
+buffer
+
+> Bar > Bar > HTTPBuffer
+= (parseAndSetHeaders stream buffer)
+| if | not (getReqLineParsed buffer)
+  ; haven't even done request line yet, stop!
+  buffer
+; now request line is parsed, so we AT LEAST got the first x#0d0a...
+; so we should wait until we have _all_ the headers, which is denoted by
+; an empty line.
+; TODO: find empty line
+| maybeCase (getFirstIdxSubstring x#0d0a stream) buffer
+; if so, we have a reqline
+& rlIdx
+; split at the request line and ignore it
+@ [rl remain] | barSplitAt rlIdx stream
+@ remainTrimmed | barDrop 2 remain
+; Again, check to see if we have CRLF yet...
+| maybeCase (getFirstIdxSubstring x#0d0a remainTrimmed) buffer
+; if so, we have all the headers
+& headersEndIdx
+@ h | barTake headersEndIdx remainTrimmed
+@ buffer | setHeaders h buffer
+; TODO: use the good bits from extractHeaders here?
+; mark it parsed
+@ buffer | setHeadersParsed TRUE buffer
 buffer
 
 > Bar > Bit
@@ -418,6 +453,7 @@ TRUE
 @ buffer | setAssembledData newAssembledData buffer
 @ buffer | setReceivedLength newReceivedLength buffer
 @ buffer | parseAndSetReqline newAssembledData buffer
+@ buffer | parseAndSetHeaders newAssembledData buffer
 buffer
 ; TODO: fuck all this shit:
 ; | if (not | (getHeadersParsed buffer))
@@ -441,6 +477,10 @@ buffer
 = (handleCompletedMessage buffer)
 | trk [%completedMessage buffer]
 | trk [%completedMessage (getAssembledData  buffer)]
+; For testing fun:
+| trk [%method (unpackSome-(mayExplainMethod buffer))]
+| trk [%uri (unpackSome-(mayExplainUri buffer))]
+| trk [%headers (getHeaders buffer)]
 | emptyBuffer 555 333
 
 ; TODO: might need to make sure this is counting properly, given size of bytes?
