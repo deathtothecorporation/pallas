@@ -202,76 +202,39 @@
 | trk [%bufferAfter buffer]
 buffer
 
-= (xarLinesList bar)
-@ seek   | x#0d
-@ search | (barSubstringSearch seek bar)
-^ (_ 0)
-? (go sidx)
-| if (gth sidx inc-(len search)) NIL
-@ end  | listIdx sidx search
-@ next | listIdx (inc sidx) search
-| trk [%search search]
-| trk [%sidx sidx]
-| trk [%end end]
-| trk [%next next]
-| trk [%range (sub end sidx)]
-@ slic | (barSlice sidx (sub end sidx) bar)
-| trk [%watGet slic]
-| CONS slic
-| go (inc sidx)
-
-= (barLinesList bar)
+; TODO: need to update most other functions now in light of this new function.
+;       proximate goal: extract headers.
+> Bar > Bar > List Bar
+= (barSubstringLinesList seek bar)
+@ indices (barSubstringSearch seek bar)
+@ seekLen (barLen seek)
 @ wid (barLen bar)
-^ (_ 0)
-? (go off)
-| if (gte off wid) NIL
-@ end (barElemIndexOff newlineChar off bar)
-| CONS (barSlice off (sub end off) bar)
-| go (inc end)
+^ listFilter (compose not barIsEmpty) _
+^ _ 0 indices
+? (go start idxList)
+| listCase idxList
+  | CONS (barSlice start (sub wid start) bar) NIL
+& (idx rest)
+| CONS (barSlice start (sub idx start) bar)
+| go (add idx seekLen) rest
 
-99999999999999999
+(barSubstringLines seek bar)=(listToRow | barSubstringLinesList seek bar)
 
-(xarLines bar)=(listToRow | xarLinesList bar)
+=?= (listFromRow [x#de x#ad x#20be x#ef])
+    | barSubstringLinesList x#0d x#{de0dad0d20be0def0d0d}
 
-=?= (listFromRow [x#de x#ad x#aabe x#ef])
-    | xarLinesList x#{de0dad0daabe0def0d}
+=?= [x#de x#ad x#20be x#ef]
+    | barSubstringLines x#0d x#{de0dad0d20be0def0d0d}
 
-; TODO: doesn't handle empty bars and trailng newlines, see tests
-= (barSplitNewlines bar)
-@ newline | x#0d0a
-^ _ bar 0 []
-? (loop remaining startIndex acc)
-@ searchResult | (barSubstringSearch newline remaining)
-| listCase searchResult
-; No more newlines found, add remaining part and return
-  | if (eql remaining b#{})
-    acc
-  | rowSnoc acc remaining
-& (index rest)
-; Found a newline
-@ endIndex | (add startIndex index)
-@ beforeNewline | (barSlice startIndex index bar)
-@ afterNewline | (barDrop (add index 2) remaining)
-@ newAcc | (rowSnoc acc beforeNewline)
-| loop afterNewline (add endIndex 2) newAcc
+=?= (listFromRow [x#de x#ad x#20be x#ee x#ef])
+    | barSubstringLinesList x#0d x#{de0dad0d20be0dee0def}
 
-=?= (v3 b#{asdfasd} b#{asdfasdf} b#{asdfasdf})
-    (barSplitNewlines x#11110d22220d33330d)
+=?= (listFromRow [x#de x#ad x#20be x#ef])
+    | barSubstringLinesList x#0d x#{0d0dde0dad0d20be0def0d}
 
-; =?= (v1 b#{})
-;     (barSplitNewlines b#{})
+=?= (listFromRow [x#de x#ad x#200dbe x#ef])
+    | barSubstringLinesList x#0d0a0d x#{de0d0a0dad0d0a0d200dbe0d0a0def0d0a0d}
 
-=?= (v1 b#{no newlines})
-    (barSplitNewlines b#{no newlines})
-
-=?= (v2 b#{line1} b#{line2})
-    (barSplitNewlines b#{line1\nline2})
-
-;=?= (v3 b#{} b#{} b#{})
-;    (barSplitNewlines b#{\n\n})
-
-;=?= (v2 b#{trailing newline} b#{})
-;    (barSplitNewlines b#{trailing newline\n})
 
 ;; \r\n\r\n
 ; (bytesBar [13 10 13 10])
@@ -280,7 +243,7 @@ buffer
 > Bar > (HMap Bar Bar)
 = (extractHeaders headerBar)
 @ newline | x#0d0a
-@ headersAndBeyondL | (barSplitNewlines headerBar)
+@ headersAndBeyondL | (barLinesList headerBar)
 @ justHeadersR | listToRow | listTakeWhile (neq x#0d0a) (listFromRow headersAndBeyondL)
 | trk [%headerLines justHeadersR]
 ^ foldr _ emptyTab justHeadersR
@@ -293,7 +256,8 @@ buffer
 @ trimmedValue | (idx 0 (barSplitAt idxTab trimmedValue))
 | tabIns trimmedKey trimmedValue acc
 
-= testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
+; = testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
+= testBar | x#474554202F7468696E6720485454502F312E310A486F73743A206578616D706C652E636F6D0A0A436F6E74656E742D547970653A20746578742F68746D6C0A436F6E74656E742D4C656E6774683A2031350A0A48656C6C6F2C20576F726C6421
 = testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0
 
 | findDoubleCRLF testBar
