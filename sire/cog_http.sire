@@ -67,7 +67,7 @@
 * reqLineParsed  : Bit
 * reqLine        : Bar
 * contentLength  : Maybe Nat
-* chunked        : Bit
+* chunked        : Bit ; Don't need for 1.0
 * receivedLength : Nat
 
 = (emptyBuffer senderIP senderPort)
@@ -209,6 +209,8 @@
 ; the mayExplainMethod and similar functions.
 ; Since the headers are now in a map in the buffer, we don't need to
 ; do this very manual parsing here.
+;
+; Don't need chunked for 1.0!
 = (isChunked headers)
 ^ foldr _ FALSE headers
 & (header result)
@@ -350,6 +352,19 @@ TRUE
 
 =?= NONE | mayExplainUri testBuffer
 
+; Helper for getting the HTTP version
+> HTTPBuffer > Maybe Bar
+= (mayExplainHttpVersion buffer)
+@ reqLine | getReqLine buffer
+| if | not (validReqLine reqLine)
+  NONE
+@ [method uri protocol] | listToRow | barSplit { } reqLine
+| SOME protocol
+
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.0} NONE FALSE 0
+
+=?= (0 b#{HTTP/1.0}) | mayExplainHttpVersion testBuffer
+
 ; Take an HTTP chunk of any size and help build a buffer.
 ; - append into the assembledData
 ; - accumulate receivedLength
@@ -440,6 +455,7 @@ buffer
 ; All below is old and likely crap now that a lot of other refactors
 ; have happened
 ;
+; TODO: we don't need chunked for 1.0
 ;| trk [%checkIsComplete buffer]
 ;@ chunkedFlag | x#0d0a30d0a0d0a
 ;@ message     | getAssembledData buffer
