@@ -473,6 +473,32 @@ buffer
 ;| trk [%expectedLength expectedLength]
 ;| gte (getReceivedLength buffer) expectedLength
 
+; TODO:
+; want to make a fake connection processor that can roughly simulate getting a
+; continuous TCP_TAKE stream, by giving it row (which would approximate
+; the multiple responses TCP_TAKE would provide) made up of an HTTP message
+; split into an arbitrary number of items in the row
+> Row > HTTPBuffer
+= (fakeProcessConnection fakeIn buffer)
+| if (eql 0 (len fakeIn))
+  | trk [%ranOuttaIns]
+  ; | todo "what does this case actually mean?"
+  buffer
+@ [data remainder] | splitAt 1 fakeIn ; consider first item
+@ updatedBuffer | processHttpChunk buffer data
+| if (isMessageComplete updatedBuffer)
+  | trk [%processConnectionDone]
+  ; At this point, the message appears to be complete and we should
+  ; do whatever it is we're supposed to do with it, based on what consumers
+  ; might want (handleCompletedMessage):
+  @ newBuffer | handleCompletedMessage updatedBuffer
+  ; Basically starting over:
+  | fakeProcessConnection remainder newBuffer
+  ; But really, this should tie together with the server loop and TCP_TAKE
+  ; (and maybe even TCP_OPEN)
+| trk [%processConnectionRecurring]
+| fakeProcessConnection remainder updatedBuffer
+
 
 = (processConnection in buffer return)
 : data < syscall | TCP_TAKE in
@@ -535,6 +561,24 @@ buffer
 ; An HTTP-only packet (no TCP stuff!), taken from the above wireshark packet.
 ; This is more appropriate for testing this cog
 = testPacketHTTPOnly | x#474554202f6e6f746520485454502f312e310d0a486f73743a206c6f63616c686f73743a35323834370d0a557365722d4167656e743a204d6f7a696c6c612f352e3020285831313b205562756e74753b204c696e7578207838365f36343b2072763a3132392e3029204765636b6f2f32303130303130312046697265666f782f3132392e300d0a4163636570743a202a2f2a0d0a4163636570742d4c616e67756167653a20656e2d55532c656e3b713d302e350d0a4163636570742d456e636f64696e673a20677a69702c206465666c6174652c2062722c207a7374640d0a526566657265723a20687474703a2f2f6c6f63616c686f73743a35323834372f0d0a436f6e6e656374696f6e3a206b6565702d616c6976650d0a436f6f6b69653a205f706b5f69642e322e316666663d353966343331626532303136396566332e313731373630313536392e3b205f706b5f69642e312e316666663d306261313033373862393362356238332e313731373631323234312e3b20706c756e64617574682d3d353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623b20435352462d546f6b656e2d35325241353d36507172555464506a5171416854515268725167434b754b6b35794172626b550d0a5365632d46657463682d446573743a20656d7074790d0a5365632d46657463682d4d6f64653a20636f72730d0a5365632d46657463682d536974653a2073616d652d6f726967696e0d0a5072696f726974793a20753d340d0a0d0a68656c6c6f20776f726c64
+
+= (splitBarIntoSegmentsList segSize bar)
+@ wid (barLen bar)
+^ (_ 0)
+? (go off)
+| if (gte off wid) NIL
+@ end (add off segSize)
+| CONS (barSlice off (sub end off) bar)
+| go (inc end)
+
+(splitBarIntoSegments segSize bar)=(listToRow | splitBarIntoSegmentsList segSize bar)
+
+= splitHTTPRow | splitBarIntoSegments 6 testPacketHTTPOnly
+
+= emptyBuffer | HTTP_BUF 9999 8888 b#{} FALSE emptyTab FALSE b#{} NONE FALSE 0
+
+=?= "wat"
+  | fakeProcessConnection splitHTTPRow emptyBuffer
 
 = main
 : exit < runCog
