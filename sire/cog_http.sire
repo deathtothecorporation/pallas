@@ -10,6 +10,13 @@
 ;
 ;;;;;;
 ;
+; Definite TODOS:
+; - Adjust the "receivedLength" property. This should only be about the request body
+; - Error things:
+;   - "If a request contains an entity body and Content-Length is not specified,
+;     and the server does not recognize or cannot calculate the length from other
+;     fields, then the server should send a 400 (bad request) response."
+;
 ; Things that need to happen:
 ; - make sure header parsing handles strange things
 ; - test with HTTP body included (pretty sure the parsing won't know this
@@ -69,6 +76,8 @@
 * contentLength  : Maybe Nat
 * chunked        : Bit ; Don't need for 1.0
 * receivedLength : Nat
+* body           : Bar
+* bodyParsed     : Bit
 
 = (emptyBuffer senderIP senderPort)
 | HTTP_BUF
@@ -82,6 +91,7 @@
 * NONE
 * FALSE
 * 0
+* b#{}
 
 # record CogState
 | COG_STATE
@@ -131,7 +141,7 @@
 ; Using actual x haxes rather than fake b haxes. mostly for \r \n reasons
 ; = testBar | b#{GET /thing HTTP/1.1\nHost: example.com\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\nHello, World!}
 = testBar | x#474554202F7468696E6720485454502F312E310A486F73743A206578616D706C652E636F6D0d0A436F6E74656E742D547970653A20746578742F68746D6C0A436F6E74656E742D4C656E6774683A2031350d0A48656C6C6F2C20576F726C6421
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0 b#{} FALSE
 
 =?= (SOME 37) | (findDoubleCRLF testBar)
 
@@ -287,7 +297,7 @@ buffer
 @ [rl remain] | barSplitAt requestLineIdx stream
 @ remainTrimmed | barDrop 2 remain
 ; Again, check to see if we have CRLF yet...
-| maybeCase (getFirstIdxSubstring x#0d0a remainTrimmed) buffer
+| maybeCase (getFirstIdxSubstring x#0d0a0d0a remainTrimmed) buffer
 ; if so, we have all the headers
 & headersEndIdx
 @ h | barTake headersEndIdx remainTrimmed
@@ -296,7 +306,30 @@ buffer
 ; TODO: use the good bits from extractHeaders here?
 ; mark it parsed
 @ buffer | setHeadersParsed TRUE buffer
-| trk [%aFinishedBuffer buffer]
+buffer
+
+> Bar > Bar > HTTPBUffer
+= (parseAndSetBody stream buffer)
+@ contentLength | getContentLength buffer
+@ doubleCRLF | x#0d0a0d0a
+; TODO: "The presence of an entity body in a request is signaled by the
+; inclusion of a Content-Length header field in the request message headers"
+; That is: if we don't have a Content-Length header we don't need to look
+; for a body.
+| if | not (getHeadersParsed buffer)
+  ; haven't parsed headers yet, stop!
+  buffer
+; Find the first double CRLF - this should be the end of the headers
+| maybeCase (getFirstIdxSubstring doubleCRLF stream) buffer
+& headersEndIdx
+| trk [%pppppEnd headersEndIdx]
+| trk [%ppppp (barDrop headersEndIdx stream)]
+| trk [%pppppLen (barLen doubleCRLF)]
+@ body | barDrop (barLen doubleCRLF) | barDrop headersEndIdx stream
+| trk [%streamxxxx stream]
+| trk [%bodyxxxx body]
+@ buffer | setBody body buffer
+@ buffer | setBodyParsed TRUE buffer
 buffer
 
 ; Helper for determining if the Request Line looks right
@@ -323,15 +356,15 @@ TRUE
 @ [method uri protocol] | listToRow | barSplit { } reqLine
 | SOME method
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0 b#{} FALSE
 
 =?= (0 b#{GET}) | mayExplainMethod testBuffer
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{POST /foo HTTP/1.1} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{POST /foo HTTP/1.1} NONE FALSE 0 b#{} FALSE
 
 =?= (0 b#{POST}) | mayExplainMethod testBuffer
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{} NONE FALSE 0 b#{} FALSE
 
 =?= NONE | mayExplainMethod testBuffer
 
@@ -344,11 +377,11 @@ TRUE
 @ [method uri protocol] | listToRow | barSplit { } reqLine
 | SOME uri
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.1} NONE FALSE 0 b#{} FALSE
 
 =?= (0 b#{/foo}) | mayExplainUri testBuffer
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{asdfsadfsdf} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{asdfsadfsdf} NONE FALSE 0 b#{} FALSE
 
 =?= NONE | mayExplainUri testBuffer
 
@@ -361,7 +394,7 @@ TRUE
 @ [method uri protocol] | listToRow | barSplit { } reqLine
 | SOME protocol
 
-= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.0} NONE FALSE 0
+= testBuffer | HTTP_BUF 9 8888 testBar FALSE emptyTab FALSE b#{GET /foo HTTP/1.0} NONE FALSE 0 b#{} FALSE
 
 =?= (0 b#{HTTP/1.0}) | mayExplainHttpVersion testBuffer
 
@@ -370,17 +403,15 @@ TRUE
 ; - accumulate receivedLength
 ; - if we have the Request Line completed yet, set it in the buffer
 ; - if we have all the headers completed yet, set them in the buffer
-; - TODO: eventually any HTTP body 
+; - TODO: eventually any HTTP body
 = (processHttpChunk buffer chunk)
-| trk [%processHttpChunk [buffer chunk]]
-| trk [%xxxx buffer]
 @ newAssembledData  | (barWeld (getAssembledData buffer) chunk)
 @ newReceivedLength | (add (getReceivedLength buffer) | barLen chunk)
 @ buffer | setAssembledData newAssembledData buffer
 @ buffer | setReceivedLength newReceivedLength buffer
 @ buffer | parseAndSetReqline newAssembledData buffer
 @ buffer | parseAndSetHeaders newAssembledData buffer
-; @ buffer | parseAndSetBody newAssembledData buffer
+@ buffer | parseAndSetBody newAssembledData buffer
 buffer
 
 ; TODO: this doesn't actually do anything yet except print some stuff.
@@ -485,18 +516,12 @@ buffer
   ; | todo "what does this case actually mean?"
   buffer
 @ [data remainder] | splitAt 1 fakeIn ; consider first item
-@ updatedBuffer | processHttpChunk buffer data
+@ updatedBuffer | processHttpChunk buffer (idx 0 data)
+| trk [%updatedBuffer updatedBuffer]
 | if (isMessageComplete updatedBuffer)
-  | trk [%processConnectionDone]
-  ; At this point, the message appears to be complete and we should
-  ; do whatever it is we're supposed to do with it, based on what consumers
-  ; might want (handleCompletedMessage):
-  @ newBuffer | handleCompletedMessage updatedBuffer
-  ; Basically starting over:
-  | fakeProcessConnection remainder newBuffer
-  ; But really, this should tie together with the server loop and TCP_TAKE
-  ; (and maybe even TCP_OPEN)
-| trk [%processConnectionRecurring]
+  ; @ newBuffer | handleCompletedMessage updatedBuffer
+  ; | fakeProcessConnection remainder newBuffer
+  updatedBuffer
 | fakeProcessConnection remainder updatedBuffer
 
 
@@ -569,16 +594,69 @@ buffer
 | if (gte off wid) NIL
 @ end (add off segSize)
 | CONS (barSlice off (sub end off) bar)
-| go (inc end)
+| go end
 
 (splitBarIntoSegments segSize bar)=(listToRow | splitBarIntoSegmentsList segSize bar)
 
-= splitHTTPRow | splitBarIntoSegments 6 testPacketHTTPOnly
+=?= [b#hel b#{lo } b#wor b#{ld.}]
+  | splitBarIntoSegments 3 b#{hello world.}
 
-= emptyBuffer | HTTP_BUF 9999 8888 b#{} FALSE emptyTab FALSE b#{} NONE FALSE 0
+=?= [b#he b#{ll} b#{o } b#{wo} b#{rl} b#{d!} b#{!}]
+  | splitBarIntoSegments 2 b#{hello world!!}
 
-=?= "wat"
-  | fakeProcessConnection splitHTTPRow emptyBuffer
+=?= [b#{hello world.}]
+  | splitBarIntoSegments 1000 b#{hello world.}
+
+7777
+7777
+7777
+7777
+7777
+7777
+
+= emptyBuffer | HTTP_BUF 9999 8888 b#{} FALSE emptyTab FALSE b#{} NONE FALSE 0 b#{} FALSE
+= headersTab
+| tabFromPairs
+, [b#{Host} b#{localhost:52847}]
+  [b#{Cookie} b#{_pk_id.2.1fff=59f431be20169ef3.1717601569.; _pk_id.1.1fff=0ba10378b93b5b83.1717612241.; plundauth-=5495ebe05abda9acf36a067321888f813a3f53f9dad79b30002bd5b7d906e53b; CSRF-Token-52RA5=6PqrUTdPjQqAhTQRhrQgCKuKk5yArbkU}]
+  [b#{Accept} b#{*/*}]
+  [b#{Referer} b#{http://localhost:52847/}]
+  [b#{Priority} b#{u=4}]
+  [b#{Connection} b#{keep-alive}]
+  [b#{User-Agent} b#{Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:129.0) Gecko/20100101 Firefox/129.0}]
+  [b#{Sec-Fetch-Mode} b#{cors}]
+  [b#{Sec-Fetch-Site} b#{same-origin}]
+  [b#{Sec-Fetch-Dest} b#{empty}]
+  [b#{Accept-Language} b#{en-US,en;q=0.5}]
+  [b#{Accept-Encoding} b#{gzip, deflate, br, zstd}]
+
+= httpGetWithBody | x#474554202F6E6F746520485454502F312E310A486F73743A206C6F63616C686F73743A35323834370A557365722D4167656E743A204D6F7A696C6C612F352E3020285831313B205562756E74753B204C696E7578207838365F36343B2072763A3132392E3029204765636B6F2F32303130303130312046697265666F782F3132392E300A4163636570743A202A2F2A0A4163636570742D4C616E67756167653A20656E2D55532C656E3B713D302E350A4163636570742D456E636F64696E673A20677A69702C206465666C6174652C2062722C207A7374640A526566657265723A20687474703A2F2F6C6F63616C686F73743A35323834372F0A436F6E74656E742D4C656E6774683A2031310A436F6F6B69653A205F706B5F69642E322E316666663D353966343331626532303136396566332E313731373630313536392E3B205F706B5F69642E312E316666663D306261313033373862393362356238332E313731373631323234312E3B20706C756E64617574682D3D353439356562653035616264613961636633366130363733323138383866383133613366353366396461643739623330303032626435623764393036653533623B20435352462D546F6B656E2D35325241353D36507172555464506A5171416854515268725167434B754B6B35794172626B550A5365632D46657463682D446573743A20656D7074790A5365632D46657463682D4D6F64653A20636F72730A5365632D46657463682D536974653A2073616D652D6F726967696E0A5072696F726974793A20753D340A0A68656C6C6F20776F726C64
+
+= splitHTTPRow | splitBarIntoSegments 6 httpGetWithBody
+
+= expectedBuffer | HTTP_BUF 9999 8888 httpGetWithBody TRUE headersTab TRUE b#{GET /note HTTP/1.1} NONE FALSE 600 b#{hello world} FALSE
+
+= assembledBuffer | fakeProcessConnection splitHTTPRow emptyBuffer
+
+;;; Integration tests for entire process connection -> set record fields flow
+;;; on simulated re-assembled HTTP message from chunks
+
+=?= (getReqLine expectedBuffer)
+  | getReqLine assembledBuffer
+
+=?= (getReqLineParsed expectedBuffer)
+  | getReqLineParsed assembledBuffer
+
+=?= (getHeaders expectedBuffer)
+  | getHeaders assembledBuffer
+
+=?= (getHeadersParsed expectedBuffer)
+  | getHeadersParsed assembledBuffer
+
+trk splitHTTPRow
+
+=?= (getBody expectedBuffer)
+  | getBody assembledBuffer
 
 = main
 : exit < runCog
