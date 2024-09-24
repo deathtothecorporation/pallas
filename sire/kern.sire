@@ -52,6 +52,7 @@
 ; | k input const-end
 
 = (syscall request k end me fr sl rq)
+| trk [syscall=request]
 @ rq | rowCons (me,request) rq
 @ sl | put sl me k
 | end fr sl rq

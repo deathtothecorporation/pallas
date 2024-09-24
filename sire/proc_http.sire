@@ -556,9 +556,18 @@ buffer
   updatedBuffer
 | fakeProcessConnection remainder updatedBuffer
 
+> Bar > Bit
+= (valid msg) | TRUE ; TODO check if valid HTTP msg
 
-= (processConnection in buffer return)
-: data < syscall | TCP_TAKE in
+> HTTPBuffer > HTTPRequest
+= (makeMessage buffer)
+| HTTP_REQ b#GET b#{/} b#{1.0} ~[] emptyBar
+
+= (processConnection in getResponse buffer return)
+| trk %processConnection
+| trk (%tcp_take, TCP_TAKE in)
+: data < syscall (TCP_TAKE in)
+| trk [took=data]
 | if (barIsEmpty data) ; check to see if we're done with HTTP message
 ; ...but that said, see above notes about how to tell if an HTTP message
 ; is complete (hint, it's way more than barIsEmpty)
@@ -568,43 +577,38 @@ buffer
   | return ()
 @ updatedBuffer | processHttpChunk buffer data
 | trk [%updatedBuffer updatedBuffer]
-| if (isMessageComplete updatedBuffer)
-  | trk [%processConnectionDone]
-  ; At this point, the message appears to be complete and we should
-  ; do whatever it is we're supposed to do with it, based on what consumers
-  ; might want (handleCompletedMessage):
-  @ newBuffer | handleCompletedMessage updatedBuffer
-  ; Basically starting over:
-  | processConnection in newBuffer
-  ; But really, this should tie together with the server loop and TCP_TAKE
-  ; (and maybe even TCP_OPEN)
-| trk [%processConnectionRecurring]
-| processConnection in updatedBuffer return
+| ifNot (isMessageComplete updatedBuffer)
+  | trk [%processConnectionRecurring]
+  | processConnection in getResponse updatedBuffer return
+| trk [%processConnectionDone]
+; At this point, the message appears to be complete and we should
+; do whatever it is we're supposed to do with it, based on what consumers
+; might want (handleCompletedMessage):
+: response < getResponse | makeMessage updatedBuffer
+@ response
+  | if (valid response) response
+  | b#{internal server error} ; TODO correct format
+^ _ response
+? (sendAndClose response)
+: mBytes < syscall | TCP_GIVE in response
+: bytes  < maybeCase mBytes  | syscall (TCP_SHUT in) return
+| trk [%sendAndClose [=bytes total=(barLen response)]]
+| if (barLen response == bytes) | syscall (TCP_SHUT in) return
+| sendAndClose | barDrop bytes response
 
-= (serverLoop return)
-; - processConnection needs to work continuously until it has a complete message
-; - then ... forward this whole thing away?
-;   - or make available to a consumer or something
-; create a connection handle:
-;
-; WHEN YOU HIT A SYSCALL YOU'RE ALWAYS DONE, THREAD-WISE
-; (but the cog isn't finished because you forked)
-; (add TCP_HEAR to rq row, at the *end* of the event), then continue with k
-;;;; the stack of syscalls is the "events" in the kernel loop stream
-;;;; and the sl and rq is the stack of continuations for those syscalls
-;;;; "exe" is the continuation and "response" is the result from the runtime (kern.sire KERNEL function)
-;;;; "end" is "return"
-;
-; todo: we'll need "infinite of these" / re-create when done / maybe forward on to
-;       next port number forever?
+= (serverLoop getResponse return)
 : [in ip port] < syscall | TCP_HEAR
 ; TODO: ip to word
 ; ip and port from who connected to us.
 | trk [=in]
 | trk [=ip]
 | trk [=port]
-: tid < pumpFork (serverLoop)
-| processConnection in (emptyBuffer ip port) return
+: port < syscall | TCP_MINE
+| trk [%before_fork port]
+: tid < pumpFork (serverLoop getResponse)
+: port < syscall | TCP_MINE
+| trk [%after_fork port]
+| processConnection in getResponse (emptyBuffer ip port) return
 
 = testIP | b#{192.168.10.10}
 = testIpWord | ipToWord testIP
@@ -673,22 +677,22 @@ buffer
 ;;; Integration tests for entire process connection -> set record fields flow
 ;;; on simulated re-assembled HTTP message from chunks
 
-=?= (getReqLine expectedBuffer)
-  | getReqLine assembledBuffer
+; =?= (getReqLine expectedBuffer)
+;   | getReqLine assembledBuffer
 
-=?= (getReqLineParsed expectedBuffer)
-  | getReqLineParsed assembledBuffer
+; =?= (getReqLineParsed expectedBuffer)
+;   | getReqLineParsed assembledBuffer
 
-=?= (getHeaders expectedBuffer)
-  | getHeaders assembledBuffer
+; =?= (getHeaders expectedBuffer)
+;   | getHeaders assembledBuffer
 
-=?= (getHeadersParsed expectedBuffer)
-  | getHeadersParsed assembledBuffer
+; =?= (getHeadersParsed expectedBuffer)
+;   | getHeadersParsed assembledBuffer
 
 trk splitHTTPRow
 
-=?= (getBody expectedBuffer)
-  | getBody assembledBuffer
+; =?= (getBody expectedBuffer)
+;   | getBody assembledBuffer
 
 ; TODO: use ipToWord?
 = (hydrate return)
@@ -703,11 +707,13 @@ trk splitHTTPRow
 ;
 | return ()
 
+= (responseProtocol msg) | syscall | DB_READ msg
+
 = main
-: exit < runCog 0 0
+: exit < runCog 0 (_ _ _ & b#success)
 | trk %started
 : _ < work EXEC-hydrate id
 | trk %started_hydrate
-: _ < work EXEC-serverLoop id
+: _ < work EXEC-(serverLoop responseProtocol) id
 | trk %started_server
 | exit ()
