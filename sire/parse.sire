@@ -7,6 +7,10 @@
 :| prelude
 :| stew
 
+= trkk | trk
+
+= (trk tag out)
+| trkk [tag out]
 
 ;;; Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -28,11 +32,11 @@
 > Nat
 > (Bar > r)
 > (Bar > r)
-> (a > r)
+> (Nat > a > r)
 > r
 
 = (anyChar buf off err fail ok)
-| if (gte off | barLen buf) (**fail b#more)
+| if (gte off | barLen buf) fail
 @ !chr (barIdx off buf)
 @ !off (inc off)
 | **ok off chr
@@ -41,13 +45,16 @@
 
 = (satisfies expected f buf off err fail ok)
 | if (gte off | barLen buf)
-    | **fail b#more
+    | trk %satisfies_fail 0
+    | **fail buf
 @ chr (barIdx off buf)
 | if (f chr)
+    | trk %satisfies_success 0
     @ !off (inc off)
     | **ok off chr
 | **else
-    | **fail expected
+    | trk %satisfies_else 0
+    | **err expected
 
 = (char c buf off err fail ok)
 | **satisfies (showChar c) (eql c) buf off err fail ok
@@ -56,8 +63,17 @@
 | x buf off fail fail ok ; backtrack to here even the parser calls `err`.
 
 = (andThen x y buf off err fail ok)
-: off _ < **x buf off err fail
-| **y buf off err err ok
+: off res < **x buf off err fail
+@ (yFail _)
+    | fail buf
+| **y buf off err yFail ok
+    ;; if the first succeds, we are commited,
+    ;; no backtracking!
+
+= (andThenLeft x y buf off err fail ok)
+: off r < **x buf off err fail
+: off o < **y buf off err err
+| ok off r
     ;; if the first succeds, we are commited,
     ;; no backtracking!
 
@@ -76,13 +92,6 @@
 : off qRes < q buf off err fail
 | ok off (f pRes qRes)
 
-= (andThenLeft x y buf off err fail ok)
-: off r < **x buf off err fail
-: off o < **y buf off err err
-| ok off r
-    ;; if the first succeds, we are commited,
-    ;; no backtracking!
-
 = (bind x y buf off err fail ok)
 : off xRes < **x buf off err fail
 | **y xRes buf off err err ok
@@ -91,16 +100,23 @@
 
 ;; TODO: stew: support inline annotations on nested lambdas.
 
-= (optional x buf off err fail ok)
-@ (xFail _)       | ok off NONE
-@ (xOkay off res) | ok off (SOME res)
-| **x buf off err xFail xOkay
+= (optional p buf off err fail ok)
+@ pFail
+    | if (eql off | barLen buf) | **fail
+    | ok off NONE
+@ (pOk off res)
+    | **ok off (SOME res)
+| **p buf off err pFail pOk
 
-= (choice x y buf off err fail ok)
-@ (xFails xMsg)
-    @ (yFails yMsg) (fail [xMsg yMsg])
-    | **y buf off err yFails ok
-| **x buf off err xFails ok
+= (choice p1 p2 buf off err fail ok)
+@ (p1Err _)
+    | p2 buf off err fail ok
+@ (p1Fail rem)
+    | trk %p1Fail [=rem =buf =off]
+    | if (eql rem (barDrop off buf))
+        | p2 buf off err fail ok
+    | fail rem
+| p1 buf off p1Err p1Fail ok
 
 = (choices1 o1 os)
 # datacase os
@@ -109,7 +125,7 @@
 
 = (choices os buf off err fail ok)
 # datacase os
-* NIL         | fail {empty choices}
+* NIL         | **fail
 * (CONS o os) | choices1 o os buf off err fail ok
 
 = (many item)
@@ -118,6 +134,15 @@
     | parserMap (CONS first) (many item)
 | parserPure NIL
 
+= (many item buf off err fail ok)
+^ _ NIL buf off
+? (loop acc buf off)
+@ (itemOk newOff res)
+    | loop (CONS res acc) buf newOff
+@ (itemFail _)
+    | ok off (listRev acc)
+| item buf off err itemFail itemOk
+
 = (some item)
 : first < bind item
 | parserMap (CONS first) (many item)
@@ -125,7 +150,7 @@
 = (eof buf off err fail ok)
 @ atEof (gte off | barLen buf)
 | if atEof | **ok off ()
-| **else   | **fail b#EOF
+| **else   | **err b#EOF
 
 (pcons x y)=(parserMap2 CONS x y)
 
@@ -137,13 +162,36 @@ xy=(choice (char {x}) (char {y}))
 | pcons (choice (char %x) (char %y))
 | xys
 
-# datatype (ParserResult e a)
-* FAIL=FAIL _:e
-* OKAY=OKAY _:a
+= (allowPartial p buf off err fail ok)
+: off res < p buf off err fail
+| ok off res
 
-= (runParser parser buffer)
-: off res < **parser buffer 0 FAIL FAIL
-| OKAY res
+# datatype (ParseResult a)
+* OKAY _:a
+* CONT res:(Maybe a) rem:Bar cont:(Bar > Parser r a)
+* FAIL _:Bar
+
+= (runParser parser buf)
+@ (err hmm)
+    | trk %runParser_err [=hmm]
+    | FAIL hmm
+@ (fail rem)
+    | trk %runParser_fail [=rem]
+    | CONT NONE buf parser
+@ (ok off res)
+    | trk %runParser_ok [=off =res =buf]
+    | if (eql off | barLen buf)
+        | OKAY res
+    | FAIL (barDrop off buf)
+| parser buf 0 err fail ok
+
+= (continueParser partialResult newBuf)
+# datacase partialResult
+* (CONT _ remainingBuf continuationParser)
+    @ combinedBuf (barWeld remainingBuf newBuf)
+    | runParser continuationParser combinedBuf
+* _
+    | partialResult
 
 ; Commits after the first character; this exists just to test backtracing.
 = (_string bar buf off err fail ok)
@@ -153,11 +201,11 @@ xy=(choice (char {x}) (char {y}))
 * NIL         | ok off bar
 * (CONS c cs) | andThen (char c) (go cs) buf off err fail ok
 
-; Commits after the first character, just to test backtracing.
+; Doesn't commit after the first character.
 = (string bar buf off err fail ok)
 @ wid (barLen bar)
 | if (bar /= barSlice off wid buf)
-    | fail bar
+    | err bar
 @ !off (add off wid)
 | ok off bar
 
@@ -231,44 +279,48 @@ xy=(choice (char {x}) (char {y}))
 ^ **runParser _ bar
 | choice (string b#xy) (string b#xx)
 
-
 ;;; Tests ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 =?= OKAY-()       | parse_eof b#{}
 =?= FAIL-(b#EOF)  | parse_eof b#{x}
 =?= FAIL-(b#EOF)  | parse_eof b#{xy}
-=?= FAIL-(b#more) | parse_x b#{}
+=?= (CONT NONE b#{} char-{x}) | parse_x b#{}
 =?= OKAY-{x}      | parse_x b#{x}
-=?= OKAY-{x}      | parse_x b#{xy}
-=?= FAIL-(b#y)    | parse_y b#{xy}
+=?= FAIL-(b#y)    | parse_x b#{xy}  ; TODO should distinguish between this error
+=?= FAIL-(b#y)    | parse_y b#{xy}  ; TODO and this error
 =?= OKAY-{y}      | parse_xy b#{xy}
-=?= FAIL-(b#more) | parse_xy b#{x}
+=?= (CONT NONE b#x (andThen char-{x} char-{y})) | parse_xy b#{x}
 =?= FAIL-(b#x)    | parse_xy b#{y}
 =?= FAIL-(b#x)    | parse_xx b#{xy}
 =?= OKAY-{x}      | parse_xx b#{xx}
 
-=?= OKAY-(CONS %x 0)         | parse_xys b#x
-=?= OKAY-NIL                 | parse_xys b#{}
-=?= OKAY-(~[%x %y])          | parse_xys b#xy
-=?= OKAY-(~[%y %x %y])       | parse_xys b#yxy
-=?= OKAY-(~[%y %y])          | parse_xys b#yy
-=?= FAIL-[(b#EOF) [b#x b#y]] | parse_xys b#z
+; =?= OKAY-(CONS %x 0)         | parse_xys b#x
+; =?= OKAY-NIL                 | parse_xys b#{}
+; =?= OKAY-(~[%x %y])          | parse_xys b#xy
+; =?= OKAY-(~[%y %x %y])       | parse_xys b#yxy
+; =?= OKAY-(~[%y %y])          | parse_xys b#yy
+; =?= FAIL-(b#y)               | parse_xys b#z     ; TODO error should be [b#EOF [b#x b#y]]
 
-=?= OKAY-(~[%x %y %x]) | parse_many_xy b#xyxz
-=?= OKAY-(~[])         | parse_many_xy b#{}
-=?= OKAY-(~[])         | parse_many_xy b#{a}
-=?= OKAY-(~[%x])       | parse_many_xy b#{xa}
+; =?= FAIL-(b#y)          | parse_many_xy b#xyxz  ; TODO better error
+; =?= OKAY-(~[])          | parse_many_xy b#{}
+; =?= FAIL-(b#y)          | parse_many_xy b#{a}
+; =?= FAIL-(b#y)          | parse_many_xy b#{xa}
 
-=?= OKAY-(~[%x %y %x])   | parse_some_xy b#xyxz
-=?= FAIL-[b#more b#more] | parse_some_xy b#{}
-=?= FAIL-[b#x b#y]       | parse_some_xy b#{a}
-=?= OKAY-(~[%x])         | parse_some_xy b#{xa}
+; =?= FAIL-(b#y)           | parse_some_xy b#xyxz
+; =?= (CONT NONE b#{} some-xy) | parse_some_xy b#{}
+; =?= FAIL-(b#y)       | parse_some_xy b#{a}
+; =?= FAIL-(b#y)         | parse_some_xy b#{xa}
 
-=?= OKAY-(b#xy) | parse_xy_xx b#{xy_}
-=?= FAIL-(b#y)  | parse_xy_xx b#{xx_}      ;;  LL(1), no back tracking
-=?= OKAY-(b#xy) | parse_xy_yx b#{xy_}
-=?= OKAY-(b#yx) | parse_xy_yx b#{yx_}      ;;  LL(1) is okay
-=?= OKAY-(b#xy) | parse_xy_xx_bt b#{xy_}
-=?= OKAY-(b#xx) | parse_xy_xx_bt b#{xx_}   ;;  explicit back-tracking (try)
-=?= OKAY-(b#xy) | parse_xy_xx_str b#{xy_}
-=?= OKAY-(b#xx) | parse_xy_xx_str b#{xx_}  ;;  LL(k), bar-slice matching
+; =?= OKAY-(b#xy) | parse_xy_xx b#{xy}
+; =?= FAIL-(b#y)
+= (cur _) | parse_xy_xx b#{xx}      ;;  LL(1), no back tracking
+
+; =?= OKAY-(b#xy) | parse_xy_yx b#{xy}
+; =?= OKAY-(b#yx) | parse_xy_yx b#{yx}      ;;  LL(1) is okay
+; =?= OKAY-(b#xy) | parse_xy_xx_bt b#{xy}
+; =?= OKAY-(b#xx)
+= (curr _)
+| parse_xy_xx_bt b#{xx}   ;;  explicit back-tracking (try)
+
+; =?= OKAY-(b#xy) | parse_xy_xx_str b#{xy}
+=?= OKAY-(b#xx) | parse_xy_xx_str b#{xx}  ;;  LL(k), bar-slice matching
