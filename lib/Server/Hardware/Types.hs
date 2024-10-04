@@ -7,31 +7,32 @@
 
 module Server.Hardware.Types
     ( callHardware
-    , CallStateVar(..)
+--  , CallStateVar(..)
     , Cancel(..)
     , Device(..)
     , DeviceName(..)
     , DeviceTable(..)
     , SysCall(..)
-    , SysCallState(..)
+--  , SysCallState(..)
     , getCallResponse
     , writeResponse
     , fillInvalidSyscall
     , syscallCategory
     , describeSyscall
-    , scsIsLive
+--  , scsIsLive
     )
 where
 
 import Fan.Convert
 import PlunderPrelude
-import Server.Types.Logging
 
 import Fan      (Fan)
 import Fan.Prof (Flow, allocateResponseFlow)
+import Server.Evaluator (Cancel(..))
+import Server.Proc
 
 --------------------------------------------------------------------------------
-
+{-
 data SysCallState
     = LIVE           -- ^ The device has not yet returned
     | DONE Fan Flow  -- ^ The device return a value not yet processed.
@@ -55,18 +56,17 @@ instance Show DeviceName where
 
 instance Show CallStateVar where
     show = const "CallStateVar"
-
+-}
 
 -- Cancel Callback -------------------------------------------------------------
 
-newtype Cancel = CANCEL { action :: STM () }
+-- newtype Cancel = CANCEL { action :: STM () }
 
 
 -- Callbacks -------------------------------------------------------------------
 
 data SysCall = SYSCALL
-    { cog   :: CogId
-    , dev   :: DeviceName
+    { dev   :: DeviceName
     , args  :: Vector Fan
     , state :: CallStateVar
     , cause :: Flow
@@ -74,9 +74,8 @@ data SysCall = SYSCALL
   deriving Show
 
 data Device = DEVICE
-    { spin     :: CogId -> IO ()
-    , call     :: SysCall -> STM (Cancel, [Flow])
-    , stop     :: CogId -> IO ()
+    { call     :: SysCall -> STM (Cancel, [Flow])
+    , stop     :: IO ()
     , category :: Vector Fan -> Text
     , describe :: Vector Fan -> Text
     }
@@ -119,26 +118,23 @@ rawWriteResponse call response flow = do
         LIVE     -> writeTVar call.state.var $ DONE (toNoun response) flow
 
 getCallResponse :: SysCall -> STM (Maybe (Fan, Flow))
-getCallResponse call = do
-    readTVar call.state.var >>= \case
-        DEAD     -> error "Response consumed twice"
-        LIVE     -> pure Nothing
-        DONE x f -> writeTVar call.state.var DEAD $> Just (x, f)
+getCallResponse call = readTVar call.state.var >>= \case
+    DEAD     -> error "Response consumed twice"
+    LIVE     -> pure Nothing
+    DONE x f -> writeTVar call.state.var DEAD $> Just (x, f)
 
 -- TODO: Make this just echo back the incoming Flow so the invalid call
 -- directly flows to the invalid 0 response.
-callHardware :: DeviceTable -> DeviceName -> SysCall -> STM (Cancel, [Flow])
-callHardware db deviceName call = do
-    case lookup deviceName.nat db.table of
+callHardware :: DeviceTable -> SysCall -> STM (Cancel, [Flow])
+callHardware db call = do
+    case lookup call.dev.nat db.table of -- TODO should be array index
         Just device -> device.call call
-        Nothing     -> noDevice
-  where
-    -- In the case of unrecognized hardware, immediately send
-    -- back a 0 response.
-    noDevice = do
-        traceM ("no such device: " <> show deviceName)
-        fillInvalidSyscall call
-        pure (CANCEL pass, [])
+        Nothing     -> do
+          -- In the case of unrecognized hardware, immediately send
+          -- back a 0 response.
+          traceM ("no such device: " <> show call.dev)
+          fillInvalidSyscall call
+          pure (CANCEL pass, [])
 
 syscallCategory :: DeviceTable -> DeviceName -> Vector Fan -> Text
 syscallCategory db deviceName params = do

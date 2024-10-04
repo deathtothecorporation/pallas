@@ -1,0 +1,228 @@
+;;; Copyright 2024 OPfN
+;;; Use of this source code is governed by a BSD-style license that can be
+;;; found in the LICENSE file.
+;;
+
+; Usage:
+; 1. start cog, note port.
+; 2. curl localhost:<port>/note (or just use the browser now!)
+;    - see that you get a { "note": "some text here" } JSON response
+; 3. curl -v localhost:<port>/changed -H "Content-Type: application/json" -d '{"newNote":"new note content here"}'
+;   - see that you get a JSON response with the updated note
+
+#### demo_cog_notepad <- proc_http
+
+:| proc_http
+:| json
+
+; TODO:
+; templating fileserver.
+; separate patterns for static assets vs state requests
+
+# typedef ContentType Bar
+
+> HMap Str (ContentType, Pin Bar)
+= startingFiles
+| hmSingleton
+* largeConfig
+
+# record CogState
+| COG_STATE
+* note       : Nat
+* files      : (HMap Str (ContentType, Pin Bar))
+* fileBytes  : Nat
+
+> Nat > CogState
+= (newCogState)
+| COG_STATE
+* b#{# Pallas Notepad\n\n- Any text entered here will be saved to Pallas.\n- Feel free to delete all of this intial content.\n\n**Enjoy!**}
+* startingFiles
+* 0
+
+(bindMaybe mVal k)=(maybeCase mVal NONE k)
+
+> Bar > Maybe (Tab Str Json)
+= (jsonMap jsonBS)
+@ res@[json leftover] (parseJson jsonBS)
+| if (res || leftover) NONE
+# datacase json
+* JMAP|m | SOME m
+* _      | NONE
+
+= (asJsonStr m)
+# datacase m
+* JSTR|s | SOME s
+* _      | NONE
+
+= (asJsonNum m)
+# datacase m
+* JNUM|n | SOME n
+* _      | NONE
+
+= (parseNote jsonBS)
+@ res@[json leftover] (parseJson jsonBS)
+: string < bindMaybe (asJsonStr json)
+| SOME string
+
+= (parseNoteJson jsonBS)
+: map < bindMaybe (jsonMap jsonBS)
+: theNote < bindMaybe (tabLookup %newNote map)
+| SOME (barNat theNote)
+
+(msgToStr m)=(JSTR | natBar m)
+
+= (buildNoteJson note)
+| JMAP
+## =note | JVEC note
+
+= (buildJson st)
+@ COG_STATE(..) st
+| JMAP
+## =note  | JVEC note
+## =files | JVEC (map msgToStr (idx 0 (hmKeys files))) ; row-in-row for some reason
+## =totalSize | JNUM fileBytes ; this is structured wrong ?
+
+= corsHeaders | [(b#{Access-Control-Allow-Origin}, b#{*}) (b#{Access-Control-Allow-Methods}, b#{PUT, GET, POST, DELETE, OPTIONS}) (b#{Access-Control-Allow-Headers}, b#{*}) (b#{Access-Control-Allow-Credentials}, b#{true})]
+
+# typedef HTTPRequest Any
+
+# typedef HTTPResponse Any
+
+# typedef Cog Any
+
+# typedef Proc Any
+
+# typedef Query | Any
+
+# typedef Command | Any
+
+
+; TODO:
+; > HTTPRequest > Cog (Tab Bar Bar, Bar, Nat, Bar)
+= (writeHandler httpRequest return)
+: st < state
+@ requestedBody | getReqBody   httpRequest
+@ requestedPath | getReqPath   httpRequest
+@ requestedMeth | getReqMethod httpRequest
+;
+# switch requestedPath
+* b#{/changed}
+  ; TODO: feels like this should live elsewhere?
+  @ priorNote | getNote st
+  @ noteNat   | fromSome priorNote | parseNoteJson requestedBody
+  @ note      | natBar noteNat
+  @ newState  | setNote note st
+  : _ < write newState
+  | return newState
+* _
+  | trk [%xxxxWritePathHandlerFallback]
+  | const b#{error}
+
+# typedef Method | Bar
+
+> HTTPRequest > Method
+= (getMethod httpRequest)
+; TODO: do we need to handle failures here?
+| getReqMethod httpRequest
+
+
+; Whatever function we pass here for "Query" will be called against state.
+> CogState > Nat > Query > HTTPResponse
+; "reads" is part of the cog public state.
+; the runtime will inject state, procId and query
+= (reads state procId query)
+; ignore procId, we only have the one - proc_http - at the moment.
+| query state
+
+
+> Any > (Tab Bar Bar, Bar, Nat, Bar)
+; What shape will the cog return from its read?
+= (formulateResponse [shape someData])
+| if (eql someData b#{error}) ; from the path switch
+  @ headers | emptyTab
+  @ body    | b#{}
+  @ code    | 404
+  @ reas    | b#{Not found}
+  [headers body code reas]
+# switch shape
+* b#index
+  @ corsHeaderT | tabFromPairs corsHeaders
+  @ headers | tabIns b#{Content-Type} b#{text/html} corsHeaderT
+  @ body    | someData
+  @ code    | 200
+  @ reas    | b#{OK}
+  [headers body code reas]
+* b#noteGet
+  @ noteJson    | buildNoteJson someData
+  @ noteJsonBS  | printJson noteJson
+  @ corsHeaderT | tabFromPairs corsHeaders
+  @ headers | tabIns b#{Content-Type} b#{application/json} corsHeaderT
+  @ body    | noteJsonBS
+  @ code    | 200
+  @ reas    | b#{OK}
+  [headers body code reas]
+* b#updatedNoteState
+  @ body    | NIL
+  @ headers | emptyTab
+  @ code    | 200
+  @ reas    | b#{OK}
+  [headers body code reas]
+* b#favicon
+  @ headers | tabIns b#{Content-Type} b#{image/x-icon} emptyTab
+  @ body    | someData
+  @ code    | 200
+  @ reas    | b#{OK}
+  [headers body code reas]
+* _
+  @ headers | tabIns b#{Content-Type} b#{text/html} emptyTab
+  @ body    | b#{confusing request}
+  @ code    | 200
+  @ reas    | b#{OK}
+  [headers body code reas]
+
+; > HTTPRequest > Proc HTTPResponse
+= (requestHandler httpRequest return)
+; This is a proc, go wild.
+| trk [%requestHandler [=httpRequest]]
+@ requestedPath | getReqPath httpRequest
+# switch (getMethod httpRequest)
+; TODO: how should we handle crashes?
+; at the moment, the cog gets into a bad state forever.
+* _
+  | trk {unknown method}
+  | return (formulateResponse [b#empty b#{}])
+* b#GET
+  # switch requestedPath
+  * b#{/note}
+    : gotRes < syscall | DB_READ | getNote
+    | return (formulateResponse [b#noteGet gotRes])
+  * b#{/}
+    | return (formulateResponse [b#index notesIndexHtml])
+  ; This would make a great default route
+  * b#{/favicon.ico}
+    | return (formulateResponse [b#favicon pallasFavicon])
+  * _
+  | trk [%xxxxRequestPathHandlerFallback]
+  | return (const b#{error})
+* b#POST
+  : newState < tag_syscall | DB_WRITE | httpRequest
+  | trk [%wroteState newState]
+  @ noteState | getNote newState
+  | return (formulateResponse [b#updatedNoteState noteState])
+* b#HEAD
+  ; if this method should even be here in HTTP/1.0...
+  | return (formulateResponse [b#empty b#{}])
+
+= (newHttp return)
+: _ < work EXEC-(httpServer requestHandler)  writeHandler
+;     3 args:  ^ worker. if it does DB_WRITE   ^ cog thread / handler for worker
+;     1-workr  it has a cog thread to apply     activates when worker sends msg
+;     2-cog    these writes to. (DB_READ)
+;     3-conti  doesn't hit the cog but rather
+;              uses its public state.
+| return ()
+
+main=(runCog newCogState reads newHttp)
+;            ^ public state
+;                        ^ DB_READ handler (allows parallel reads)
+;                              ^ cog to run
